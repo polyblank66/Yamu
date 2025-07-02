@@ -41,9 +41,13 @@ namespace Yamu
         static Queue<Action> _mainThreadActions = new();
         static bool _isCompiling;
         static DateTime _lastCompileTime = DateTime.MinValue;
+        static volatile bool _shouldStop;
 
         static Server()
         {
+            Cleanup();
+            
+            _shouldStop = false;
             _listener = new HttpListener();
             _listener.Prefixes.Add("http://localhost:17932/");
             _listener.Start();
@@ -53,14 +57,37 @@ namespace Yamu
             _thread.Start();
 
             CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
-            CompilationPipeline.assemblyCompilationStarted += OnCompilationStarted;
+            CompilationPipeline.compilationStarted += OnCompilationStarted;
             EditorApplication.update += OnEditorUpdate;
 
-            EditorApplication.quitting += () =>
+            EditorApplication.quitting += Cleanup;
+            AssemblyReloadEvents.beforeAssemblyReload += Cleanup;
+        }
+        
+        static void Cleanup()
+        {
+            _shouldStop = true;
+            
+            if (_listener?.IsListening == true)
             {
-                _listener.Stop();
-                _thread.Abort();
-            };
+                try
+                {
+                    _listener.Stop();
+                }
+                catch { }
+            }
+            
+            if (_thread?.IsAlive == true)
+            {
+                if (!_thread.Join(1000))
+                {
+                    try
+                    {
+                        _thread.Abort();
+                    }
+                    catch { }
+                }
+            }
         }
 
         static void OnEditorUpdate()
@@ -69,7 +96,7 @@ namespace Yamu
                 _mainThreadActions.Dequeue().Invoke();
         }
 
-        static void OnCompilationStarted(string assemblyPath) => _isCompiling = true;
+        static void OnCompilationStarted(object obj) => _isCompiling = true;
 
         static void OnCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
@@ -90,7 +117,7 @@ namespace Yamu
 
         static void Worker()
         {
-            while (_listener.IsListening)
+            while (!_shouldStop && _listener?.IsListening == true)
             {
                 try
                 {
@@ -141,9 +168,18 @@ namespace Yamu
                     response.OutputStream.Write(buffer, 0, buffer.Length);
                     response.OutputStream.Close();
                 }
+                catch (HttpListenerException)
+                {
+                    break;
+                }
+                catch (ThreadAbortException)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"YamuServer error: {ex.Message}");
+                    if (!_shouldStop)
+                        Debug.LogError($"YamuServer error: {ex.Message}");
                 }
             }
         }
