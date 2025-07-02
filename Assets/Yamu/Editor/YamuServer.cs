@@ -41,6 +41,7 @@ namespace Yamu
         static Queue<Action> _mainThreadActions = new();
         static bool _isCompiling;
         static DateTime _lastCompileTime = DateTime.MinValue;
+        static DateTime _compileRequestTime = DateTime.MinValue;
         static volatile bool _shouldStop;
 
         static Server()
@@ -90,6 +91,7 @@ namespace Yamu
             }
         }
 
+
         static void OnEditorUpdate()
         {
             while (_mainThreadActions.Count > 0)
@@ -132,13 +134,42 @@ namespace Yamu
                     response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
                     response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
 
-                if (request.Url.AbsolutePath == "/compile")
+                if (request.Url.AbsolutePath == "/compile-and-wait")
                 {
+                    // Record request time and request compilation
+                    _compileRequestTime = DateTime.Now;
                     lock (_mainThreadActions)
                     {
                         _mainThreadActions.Enqueue(() => CompilationPipeline.RequestScriptCompilation());
                     }
-                    responseString = "{\"status\":\"ok\", \"message\":\"Compilation requested.\"}";
+                    
+                    // Wait for compilation to actually start or timeout
+                    var waitStart = DateTime.Now;
+                    var timeout = TimeSpan.FromSeconds(5);
+                    
+                    while ((DateTime.Now - waitStart) < timeout)
+                    {
+                        if (_isCompiling || EditorApplication.isCompiling)
+                        {
+                            responseString = "{\"status\":\"ok\", \"message\":\"Compilation started.\"}";
+                            break;
+                        }
+                        
+                        // Check if compilation already completed (very fast compile)
+                        if (_lastCompileTime > _compileRequestTime)
+                        {
+                            responseString = "{\"status\":\"ok\", \"message\":\"Compilation completed quickly.\"}";
+                            break;
+                        }
+                        
+                        Thread.Sleep(50); // Small delay to avoid busy waiting
+                    }
+                    
+                    // If we get here without breaking, compilation didn't start
+                    if (string.IsNullOrEmpty(responseString))
+                    {
+                        responseString = "{\"status\":\"warning\", \"message\":\"Compilation may not have started.\"}";
+                    }
                 }
                 else if (request.Url.AbsolutePath == "/compile-status")
                 {

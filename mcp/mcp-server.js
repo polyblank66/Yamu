@@ -7,14 +7,6 @@ class MCPServer {
         this.unityServerUrl = 'http://localhost:17932';
         this.capabilities = {
             tools: {
-                compile: {
-                    description: "Request Unity Editor to compile C# scripts",
-                    inputSchema: {
-                        type: "object",
-                        properties: {},
-                        required: []
-                    }
-                },
                 compile_and_wait: {
                     description: "Request Unity Editor to compile C# scripts and wait for completion",
                     inputSchema: {
@@ -104,8 +96,6 @@ class MCPServer {
 
         try {
             switch (name) {
-                case 'compile':
-                    return await this.callCompile(id);
                 case 'compile_and_wait':
                     return await this.callCompileAndWait(id, args.timeout || 30);
                 case 'get_errors':
@@ -132,57 +122,50 @@ class MCPServer {
         }
     }
 
-    async callCompile(id) {
-        try {
-            const response = await this.makeHttpRequest('/compile');
-            return {
-                jsonrpc: '2.0',
-                id,
-                result: {
-                    content: [{
-                        type: 'text',
-                        text: `Compilation requested successfully. Status: ${response.status}`
-                    }]
-                }
-            };
-        } catch (error) {
-            throw new Error(`Failed to request compilation: ${error.message}`);
-        }
-    }
-
     async callCompileAndWait(id, timeoutSeconds) {
         try {
+            
             // Start compilation
-            await this.makeHttpRequest('/compile');
+            const compileResponse = await this.makeHttpRequest('/compile-and-wait');
+            
+            // C# side now ensures compilation has started, so we can immediately begin polling
             
             // Wait for completion with polling
             const startTime = Date.now();
             const timeoutMs = timeoutSeconds * 1000;
             
+            // Wait for compilation to complete
             while (Date.now() - startTime < timeoutMs) {
-                const statusResponse = await this.makeHttpRequest('/compile-status');
-                
-                if (statusResponse.status === 'idle') {
-                    // Compilation completed, get errors
-                    const errorResponse = await this.makeHttpRequest('/errors');
-                    const errorText = errorResponse.errors && errorResponse.errors.length > 0 
-                        ? `Compilation completed with errors:\n${errorResponse.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')}`
-                        : 'Compilation completed successfully with no errors.';
+                try {
+                    const statusResponse = await this.makeHttpRequest('/compile-status');
                     
-                    return {
-                        jsonrpc: '2.0',
-                        id,
-                        result: {
-                            content: [{
-                                type: 'text',
-                                text: errorText
-                            }]
-                        }
-                    };
+                    if (statusResponse.status === 'idle') {
+                        
+                        // Compilation completed, get errors
+                        const errorResponse = await this.makeHttpRequest('/errors');
+                        const errorText = errorResponse.errors && errorResponse.errors.length > 0 
+                            ? `Compilation completed with errors:\n${errorResponse.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')}`
+                            : 'Compilation completed successfully with no errors.';
+                        
+                        return {
+                            jsonrpc: '2.0',
+                            id,
+                            result: {
+                                content: [{
+                                    type: 'text',
+                                    text: errorText
+                                }]
+                            }
+                        };
+                    }
+                    
+                    // Wait 1 second before next poll
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (pollError) {
+                    // Continue polling despite individual request failures
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    continue;
                 }
-                
-                // Wait 1 second before next poll
-                await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
             // Timeout reached
@@ -234,7 +217,7 @@ class MCPServer {
                 reject(new Error(`HTTP request failed: ${error.message}`));
             });
 
-            req.setTimeout(5000, () => {
+            req.setTimeout(15000, () => {
                 req.destroy();
                 reject(new Error('Request timeout'));
             });
