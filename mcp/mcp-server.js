@@ -4,7 +4,7 @@ const http = require('http');
 
 class MCPServer {
     constructor() {
-        this.unityServerUrl = 'http://localhost:8000';
+        this.unityServerUrl = 'http://localhost:17932';
         this.capabilities = {
             tools: {
                 compile: {
@@ -65,7 +65,7 @@ class MCPServer {
                         protocolVersion: '2024-11-05',
                         capabilities: this.capabilities,
                         serverInfo: {
-                            name: 'YamuHttpServer',
+                            name: 'YamuServer',
                             version: '1.0.0'
                         }
                     }

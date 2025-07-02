@@ -8,7 +8,7 @@ using UnityEditor.Compilation;
 using System.Collections.Generic;
 using System;
 
-namespace YamuHttp
+namespace Yamu
 {
     [System.Serializable]
     public class CompileError
@@ -37,18 +37,18 @@ namespace YamuHttp
     {
         static HttpListener _listener;
         static Thread _thread;
-        static List<CompileError> _errorList = new List<CompileError>();
-        static Queue<Action> _mainThreadActions = new Queue<Action>();
-        static bool _isCompiling = false;
+        static List<CompileError> _errorList = new();
+        static Queue<Action> _mainThreadActions = new();
+        static bool _isCompiling;
         static DateTime _lastCompileTime = DateTime.MinValue;
 
         static Server()
         {
             _listener = new HttpListener();
-            _listener.Prefixes.Add("http://localhost:8000/");
+            _listener.Prefixes.Add("http://localhost:17932/");
             _listener.Start();
 
-            _thread = new Thread(Worker);
+            _thread = new(Worker);
             _thread.IsBackground = true;
             _thread.Start();
 
@@ -66,15 +66,10 @@ namespace YamuHttp
         static void OnEditorUpdate()
         {
             while (_mainThreadActions.Count > 0)
-            {
                 _mainThreadActions.Dequeue().Invoke();
-            }
         }
 
-        static void OnCompilationStarted(string assemblyPath)
-        {
-            _isCompiling = true;
-        }
+        static void OnCompilationStarted(string assemblyPath) => _isCompiling = true;
 
         static void OnCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
@@ -84,14 +79,12 @@ namespace YamuHttp
             foreach (var msg in messages)
             {
                 if (msg.type == CompilerMessageType.Error)
-                {
                     _errorList.Add(new CompileError
                     { 
                         file = msg.file, 
                         line = msg.line, 
                         message = msg.message 
                     });
-                }
             }
         }
 
@@ -105,7 +98,7 @@ namespace YamuHttp
                     var request = context.Request;
                     var response = context.Response;
 
-                    string responseString = "";
+                    var responseString = "";
                     response.StatusCode = (int)HttpStatusCode.OK;
                     response.ContentType = "application/json";
                     response.Headers.Add("Access-Control-Allow-Origin", "*");
@@ -150,7 +143,7 @@ namespace YamuHttp
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"YamuHttpServer error: {ex.Message}");
+                    Debug.LogError($"YamuServer error: {ex.Message}");
                 }
             }
         }
