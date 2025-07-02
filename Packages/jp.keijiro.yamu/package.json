@@ -1,0 +1,15 @@
+{
+  "author": "Keijiro Takahashi",
+  "dependencies": {},
+  "description": "Yet another minimal MCP server for Unity.",
+  "displayName": "Yamu",
+  "keywords": [
+    "unity"
+  ],
+  "license": "Unlicense",
+  "name": "jp.keijiro.yamu",
+  "repository": "github:keijiro/Yamu",
+  "unity": "6000.0",
+  "unityRelease": "0f1",
+  "version": "1.0.0"
+}

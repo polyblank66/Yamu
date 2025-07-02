@@ -2,7 +2,7 @@
   "mcpServers": {
     "Yamu": {
       "command": "node",
-      "args": ["mcp/mcp-server.js"],
+      "args": ["Packages/jp.keijiro.yamu/Node/mcp-server.js"],
       "timeout": 30000
     }
   }
