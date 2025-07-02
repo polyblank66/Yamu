@@ -10,12 +10,34 @@ using System;
 
 namespace YamuHttp
 {
+    [System.Serializable]
+    public class CompileError
+    {
+        public string file;
+        public int line;
+        public string message;
+    }
+
+    [System.Serializable]
+    public class CompileStatusResponse
+    {
+        public string status;
+        public bool isCompiling;
+        public string lastCompileTime;
+    }
+
+    [System.Serializable]
+    public class ErrorListResponse
+    {
+        public CompileError[] errors;
+    }
+
     [InitializeOnLoad]
     public static class Server
     {
         static HttpListener _listener;
         static Thread _thread;
-        static List<object> _errorList = new List<object>();
+        static List<CompileError> _errorList = new List<CompileError>();
         static Queue<Action> _mainThreadActions = new Queue<Action>();
         static bool _isCompiling = false;
         static DateTime _lastCompileTime = DateTime.MinValue;
@@ -63,7 +85,8 @@ namespace YamuHttp
             {
                 if (msg.type == CompilerMessageType.Error)
                 {
-                    _errorList.Add(new { 
+                    _errorList.Add(new CompileError
+                    { 
                         file = msg.file, 
                         line = msg.line, 
                         message = msg.message 
@@ -101,15 +124,18 @@ namespace YamuHttp
                 {
                     var status = _isCompiling ? "compiling" : 
                                 EditorApplication.isCompiling ? "compiling" : "idle";
-                    responseString = JsonUtility.ToJson(new { 
+                    var statusResponse = new CompileStatusResponse
+                    { 
                         status = status,
                         isCompiling = _isCompiling || EditorApplication.isCompiling,
                         lastCompileTime = _lastCompileTime.ToString("yyyy-MM-dd HH:mm:ss")
-                    });
+                    };
+                    responseString = JsonUtility.ToJson(statusResponse);
                 }
                 else if (request.Url.AbsolutePath == "/errors")
                 {
-                    responseString = JsonUtility.ToJson(new { errors = _errorList.ToArray() });
+                    var errorResponse = new ErrorListResponse { errors = _errorList.ToArray() };
+                    responseString = JsonUtility.ToJson(errorResponse);
                 }
                 else
                 {
