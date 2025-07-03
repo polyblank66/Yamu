@@ -1,16 +1,40 @@
-このプロジェクトでは Unity Editor 向けの超簡易的な MCP (Model Context Protocol) サーバーを実装します。
+# Design Document for a Simple MCP Server for Unity (Yamu)
 
-この MCP サーバーは、Gemini CLI や Claude Code のようなコーディングエージェントが Unity 向け C# スクリプトの開発を行う際に、Unity Editor 上でのコンパイルエラーを取得して修正する、という開発イテレーションを自律的に回せるようにすることを目的としたもので、以下のような最低限の機能しか持ちません。
+This project implements a minimal MCP (Model Context Protocol) server for the
+Unity Editor.
 
-1. Unity Editor に C# スクリプトのコンパイルを要請する。
-2. コンパイルエラーを取得する
+The purpose of this server is to allow coding agents—such as Gemini CLI or
+Claude Code—to autonomously iterate on Unity C# script development by triggering
+compilation and testing processes, and retrieving results directly from the
+Unity Editor.
 
-1 の機能が必要とされるのは、これらのコーディングエージェントを使用する際、大抵はターミナルがアクティブになっており、Unity Editor はバックグラウンドになっている可能性が高いためです。そのため、バックグラウンドになっている Unity Editor に対して強制的にプロジェクト再コンパイルを発動する必要があります。
+## Features
 
-C# スクリプトを書き換えたりする機能は敢えて MCP には持たせません。そのようなファイルの編集は MCP を介すまでもなく、コーディングエージェントが勝手に行えるためです。
+The server provides the following minimal API endpoints:
 
-この MCP サーバーは Claude Code や Gemini CLI から使用するために、通信手段としては HTTP を用いるのが望ましいです。Node.js か Python を使った中継サーバーも必要になるかもしれません。どちらか簡便な手段を用いて構いません。
+1. `compile_and_wait`: Requests Unity Editor to recompile C# scripts and
+   collects the results.
+2. `run_tests`: Executes tests via Unity Test Runner and collects the results.
 
-また、実行環境は macOS であることを前提として構いません。Windows との互換性はひとまず考えず、最も簡便な手段を用いるようにしてください。
+## Design Considerations
 
-なお、プロジェクト名は "YamuHttpServer" とし、関連ファイルの固有名詞にはそれを使用してください。
+- **Background Execution**: Since these coding agents typically operate from a
+  terminal (with Unity running in the background), the server must be able to
+  force recompilation even when the Unity Editor is not in focus.
+
+- **No File Editing**: This server does *not* support editing C# scripts. File
+  modifications should be handled directly by the coding agent without going
+  through the MCP server.
+
+- **Communication**: The server should expose an HTTP API to allow integration
+  with tools like Claude Code or Gemini CLI. A lightweight relay server
+  implemented in Node.js or Python may be used to facilitate communication.
+
+- **Platform**: The system is intended to run on macOS. Windows support is not
+  required at this stage. Simplicity and ease of implementation should be
+  prioritized.
+
+## Project Naming
+
+The project is named **"Yamu"**. Use this name consistently in all filenames,
+identifiers, and documentation.
