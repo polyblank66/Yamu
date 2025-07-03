@@ -6,9 +6,8 @@ Unity projects.
 
 ## Features
 
-- `compile_and_wait` - Triggers Unity Editor compilation and waits for
-  completion
-- `get_errors` - Retrieves compilation errors from the last build
+- `compile_and_wait` - Triggers Unity Editor compilation, waits for completion,
+  and returns compilation results including any errors
 
 ## Purpose
 

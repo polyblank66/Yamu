@@ -24,13 +24,9 @@ namespace Yamu
         public string status;
         public bool isCompiling;
         public string lastCompileTime;
-    }
-
-    [System.Serializable]
-    public class ErrorListResponse
-    {
         public CompileError[] errors;
     }
+
 
     [InitializeOnLoad]
     public static class Server
@@ -179,14 +175,10 @@ namespace Yamu
                     { 
                         status = status,
                         isCompiling = _isCompiling || EditorApplication.isCompiling,
-                        lastCompileTime = _lastCompileTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        lastCompileTime = _lastCompileTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        errors = _errorList.ToArray()
                     };
                     responseString = JsonUtility.ToJson(statusResponse);
-                }
-                else if (request.Url.AbsolutePath == "/errors")
-                {
-                    var errorResponse = new ErrorListResponse { errors = _errorList.ToArray() };
-                    responseString = JsonUtility.ToJson(errorResponse);
                 }
                 else
                 {

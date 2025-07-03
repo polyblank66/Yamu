@@ -21,14 +21,6 @@ class MCPServer {
                         required: []
                     }
                 },
-                get_errors: {
-                    description: "Get compilation errors from Unity Editor",
-                    inputSchema: {
-                        type: "object", 
-                        properties: {},
-                        required: []
-                    }
-                }
             }
         };
     }
@@ -98,8 +90,6 @@ class MCPServer {
             switch (name) {
                 case 'compile_and_wait':
                     return await this.callCompileAndWait(id, args.timeout || 30);
-                case 'get_errors':
-                    return await this.getErrors(id);
                 default:
                     return {
                         jsonrpc: '2.0',
@@ -141,10 +131,9 @@ class MCPServer {
                     
                     if (statusResponse.status === 'idle') {
                         
-                        // Compilation completed, get errors
-                        const errorResponse = await this.makeHttpRequest('/errors');
-                        const errorText = errorResponse.errors && errorResponse.errors.length > 0 
-                            ? `Compilation completed with errors:\n${errorResponse.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')}`
+                        // Compilation completed, errors are included in status response
+                        const errorText = statusResponse.errors && statusResponse.errors.length > 0 
+                            ? `Compilation completed with errors:\n${statusResponse.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')}`
                             : 'Compilation completed successfully with no errors.';
                         
                         return {
@@ -176,27 +165,6 @@ class MCPServer {
         }
     }
 
-    async getErrors(id) {
-        try {
-            const response = await this.makeHttpRequest('/errors');
-            const errorText = response.errors && response.errors.length > 0 
-                ? response.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')
-                : 'No compilation errors found.';
-            
-            return {
-                jsonrpc: '2.0',
-                id,
-                result: {
-                    content: [{
-                        type: 'text',
-                        text: errorText
-                    }]
-                }
-            };
-        } catch (error) {
-            throw new Error(`Failed to get errors: ${error.message}`);
-        }
-    }
 
     async makeHttpRequest(path) {
         return new Promise((resolve, reject) => {
