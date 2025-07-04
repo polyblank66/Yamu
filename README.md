@@ -8,6 +8,8 @@ Unity projects.
 
 - `compile_and_wait` - Triggers Unity Editor compilation, waits for completion,
   and returns compilation results including any errors
+- `run_tests` - Executes Unity Test Runner tests (both EditMode and PlayMode)
+  with real-time status monitoring and detailed result reporting
 
 ## Purpose
 
