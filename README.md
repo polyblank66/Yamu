@@ -43,7 +43,7 @@ You can either follow the steps in [`yamu-mcp-setup.md`] manually, or let the
 AI agent do it for you. For example, if you're using Gemini CLI:
 
 ```
-> You're Gemini CLI. Follow yamu-mcp-setup.md
+You're Gemini CLI. Follow yamu-mcp-setup.md
 ```
 
 The "You're ---" statement is important, as some AI agents don't know what they
