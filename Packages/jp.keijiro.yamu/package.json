@@ -1,6 +1,6 @@
 {
   "author": "Keijiro Takahashi",
-  "dependencies": {},
+  "dependencies": { "com.unity.test-framework": "1.5.1" },
   "description": "Yet another minimal MCP server for Unity.",
   "displayName": "Yamu",
   "keywords": [
@@ -11,5 +11,5 @@
   "repository": "github:keijiro/Yamu",
   "unity": "6000.0",
   "unityRelease": "0f1",
-  "version": "1.0.0"
+  "version": "1.0.1"
 }

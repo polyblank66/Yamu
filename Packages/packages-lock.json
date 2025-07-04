@@ -2,13 +2,13 @@
   "dependencies": {
     "com.unity.ext.nunit": {
       "version": "2.0.5",
-      "depth": 1,
+      "depth": 2,
       "source": "builtin",
       "dependencies": {}
     },
     "com.unity.test-framework": {
       "version": "1.5.1",
-      "depth": 0,
+      "depth": 1,
       "source": "builtin",
       "dependencies": {
         "com.unity.ext.nunit": "2.0.3",
@@ -20,17 +20,19 @@
       "version": "file:jp.keijiro.yamu",
       "depth": 0,
       "source": "embedded",
-      "dependencies": {}
+      "dependencies": {
+        "com.unity.test-framework": "1.5.1"
+      }
     },
     "com.unity.modules.imgui": {
       "version": "1.0.0",
-      "depth": 1,
+      "depth": 2,
       "source": "builtin",
       "dependencies": {}
     },
     "com.unity.modules.jsonserialize": {
       "version": "1.0.0",
-      "depth": 1,
+      "depth": 2,
       "source": "builtin",
       "dependencies": {}
     },
