@@ -26,32 +26,28 @@ MCP.
   brew install node
   ```
 
-## Quick Start
+## Installation
 
-1. Open this project in Unity Editor
-2. Run Claude Code or Gemini CLI
-3. Check MCP server connection with `/mcp` command
-4. Order the agent to trigger compilation and retrieve errors
-5. Order the agent to add incorrect code to `TestScript.cs` and trigger
-   compilation
-6. Order the agent to fix the issues until compilation succeeds
+### 1. Install the Package
 
-## Setup with Your Own Project
+You can install the Yamu package (`jp.keijiro.yamu`) via the "Keijiro" scoped
+registry using the Unity Package Manager. To add the registry to your project,
+follow [these instructions].
 
-### 1. Install Package
+[these instructions]:
+  https://gist.github.com/keijiro/f8c7e8ff29bfe63d86b888901b82644c
 
-Copy `Packages/jp.keijiro.yamu` to your Unity project.
+### 2. Add the MCP Server to the AI Agent
 
-### 2. Configure AI Client
+You can either follow the steps in [`MCP-Setup.md`](MCP-Setup.md) manually, or
+let the AI agent do it for you. For example, if you're using Gemini CLI:
 
-#### For Gemini CLI
-Copy `.gemini/settings.json` to your project directory.
+```
+> You're Gemini CLI. Follow https://github.com/keijiro/Yamu/blob/main/MCP-Setup.md
+```
 
-If you already have a `.gemini/settings.json` file, add the `Yamu` entry to
-your existing configuration.
+The "You're ---" statement is important, as some AI agents don't know what they
+are unless explicitly told.
 
-#### For Claude Code
-Copy `.mcp.json` to your project directory.
-
-If you already have a `.mcp.json` file, add the `Yamu` entry to your existing
-configuration.
+**Note**: You’ll need to update this configuration each time you upgrade Yamu.
+You can simply run the same prompt again to refresh it.
