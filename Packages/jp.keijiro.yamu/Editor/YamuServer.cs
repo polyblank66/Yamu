@@ -333,7 +333,6 @@ namespace Yamu
                 if (!string.IsNullOrEmpty(filter))
                     filterObj.testNames = new[] { filter };
 
-                Debug.Log($"Starting test execution with mode: {testMode}, filter: '{filter}'");
 
                 // Store original settings in test callbacks for restoration
                 _testCallbacks.SetOriginalPlayModeSettings(testMode == TestMode.PlayMode, originalEnterPlayModeOptionsEnabled, originalEnterPlayModeOptions);
@@ -373,7 +372,6 @@ namespace Yamu
 
         public void RunStarted(ITestAdaptor testsToRun)
         {
-            Debug.Log($"Test run started with {testsToRun.Children?.Count() ?? 0} test suites");
         }
 
         public void RunFinished(ITestResultAdaptor result)
@@ -383,7 +381,6 @@ namespace Yamu
             var results = new List<TestResult>();
             CollectTestResults(result, results);
 
-            Debug.Log($"Collected {results.Count} test results for run ID: {Server._currentTestRunId}");
 
             // Update results first, then mark as complete
             Server._testResults = new TestResults
@@ -411,12 +408,10 @@ namespace Yamu
 
         public void TestStarted(ITestAdaptor test)
         {
-            Debug.Log($"Test started: {test.FullName}");
         }
 
         public void TestFinished(ITestResultAdaptor result)
         {
-            Debug.Log($"Test finished: {result.Test.FullName} - {result.TestStatus}");
         }
 
         void CollectTestResults(ITestResultAdaptor result, List<TestResult> results)
