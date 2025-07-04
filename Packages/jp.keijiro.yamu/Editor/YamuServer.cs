@@ -12,6 +12,28 @@ using System.Linq;
 
 namespace Yamu
 {
+    static class Constants
+    {
+        public const int ServerPort = 17932;
+        public const int CompileTimeoutSeconds = 5;
+        public const int ThreadSleepMilliseconds = 50;
+        public const int ThreadJoinTimeoutMilliseconds = 1000;
+
+        public static class Endpoints
+        {
+            public const string CompileAndWait = "/compile-and-wait";
+            public const string CompileStatus = "/compile-status";
+            public const string RunTests = "/run-tests";
+            public const string TestStatus = "/test-status";
+        }
+
+        public static class JsonResponses
+        {
+            public const string CompileStarted = "{\"status\":\"ok\", \"message\":\"Compilation started.\"}";
+            public const string TestStarted = "{\"status\":\"ok\", \"message\":\"Test execution started.\"}";
+        }
+    }
+
     [System.Serializable]
     public class CompileError
     {
@@ -65,8 +87,8 @@ namespace Yamu
     {
         static HttpListener _listener;
         static Thread _thread;
-        static List<CompileError> _errorList = new();
-        static Queue<Action> _mainThreadActions = new();
+        static List<CompileError> _compilationErrors = new();
+        static Queue<Action> _mainThreadActionQueue = new();
         static bool _isCompiling;
         static DateTime _lastCompileTime = DateTime.MinValue;
         static DateTime _compileRequestTime = DateTime.MinValue;
@@ -84,10 +106,10 @@ namespace Yamu
 
             _shouldStop = false;
             _listener = new HttpListener();
-            _listener.Prefixes.Add("http://localhost:17932/");
+            _listener.Prefixes.Add($"http://localhost:{Constants.ServerPort}/");
             _listener.Start();
 
-            _thread = new(Worker);
+            _thread = new(HttpRequestProcessor);
             _thread.IsBackground = true;
             _thread.Start();
 
@@ -116,7 +138,7 @@ namespace Yamu
 
             if (_thread?.IsAlive == true)
             {
-                if (!_thread.Join(1000))
+                if (!_thread.Join(Constants.ThreadJoinTimeoutMilliseconds))
                 {
                     try
                     {
@@ -130,8 +152,8 @@ namespace Yamu
 
         static void OnEditorUpdate()
         {
-            while (_mainThreadActions.Count > 0)
-                _mainThreadActions.Dequeue().Invoke();
+            while (_mainThreadActionQueue.Count > 0)
+                _mainThreadActionQueue.Dequeue().Invoke();
         }
 
         static void OnCompilationStarted(object obj) => _isCompiling = true;
@@ -140,11 +162,11 @@ namespace Yamu
         {
             _isCompiling = false;
             _lastCompileTime = DateTime.Now;
-            _errorList.Clear();
+            _compilationErrors.Clear();
             foreach (var msg in messages)
             {
                 if (msg.type == CompilerMessageType.Error)
-                    _errorList.Add(new CompileError
+                    _compilationErrors.Add(new CompileError
                     {
                         file = msg.file,
                         line = msg.line,
@@ -153,140 +175,157 @@ namespace Yamu
             }
         }
 
-        static void Worker()
+        static void HttpRequestProcessor()
         {
             while (!_shouldStop && _listener?.IsListening == true)
             {
                 try
                 {
                     var context = _listener.GetContext();
-                    var request = context.Request;
-                    var response = context.Response;
-
-                    var responseString = "";
-                    response.StatusCode = (int)HttpStatusCode.OK;
-                    response.ContentType = "application/json";
-                    response.Headers.Add("Access-Control-Allow-Origin", "*");
-                    response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                    response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
-
-                if (request.Url.AbsolutePath == "/compile-and-wait")
-                {
-                    // Record request time and request compilation
-                    _compileRequestTime = DateTime.Now;
-                    lock (_mainThreadActions)
-                    {
-                        _mainThreadActions.Enqueue(() => CompilationPipeline.RequestScriptCompilation());
-                    }
-
-                    // Wait for compilation to actually start or timeout
-                    var waitStart = DateTime.Now;
-                    var timeout = TimeSpan.FromSeconds(5);
-
-                    while ((DateTime.Now - waitStart) < timeout)
-                    {
-                        if (_isCompiling || EditorApplication.isCompiling)
-                        {
-                            responseString = "{\"status\":\"ok\", \"message\":\"Compilation started.\"}";
-                            break;
-                        }
-
-                        // Check if compilation already completed (very fast compile)
-                        if (_lastCompileTime > _compileRequestTime)
-                        {
-                            responseString = "{\"status\":\"ok\", \"message\":\"Compilation completed quickly.\"}";
-                            break;
-                        }
-
-                        Thread.Sleep(50); // Small delay to avoid busy waiting
-                    }
-
-                    // If we get here without breaking, compilation didn't start
-                    if (string.IsNullOrEmpty(responseString))
-                    {
-                        responseString = "{\"status\":\"warning\", \"message\":\"Compilation may not have started.\"}";
-                    }
-                }
-                else if (request.Url.AbsolutePath == "/compile-status")
-                {
-                    var status = _isCompiling ? "compiling" :
-                                EditorApplication.isCompiling ? "compiling" : "idle";
-                    var statusResponse = new CompileStatusResponse
-                    {
-                        status = status,
-                        isCompiling = _isCompiling || EditorApplication.isCompiling,
-                        lastCompileTime = _lastCompileTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        errors = _errorList.ToArray()
-                    };
-                    responseString = JsonUtility.ToJson(statusResponse);
-                }
-                else if (request.Url.AbsolutePath == "/run-tests")
-                {
-                    var query = request.Url.Query ?? "";
-                    var mode = "EditMode";
-                    var filter = "";
-
-                    if (query.Contains("mode="))
-                    {
-                        var modeStart = query.IndexOf("mode=") + 5;
-                        var modeEnd = query.IndexOf("&", modeStart);
-                        mode = modeEnd == -1 ? query.Substring(modeStart) : query.Substring(modeStart, modeEnd - modeStart);
-                        mode = Uri.UnescapeDataString(mode);
-                    }
-
-                    if (query.Contains("filter="))
-                    {
-                        var filterStart = query.IndexOf("filter=") + 7;
-                        var filterEnd = query.IndexOf("&", filterStart);
-                        filter = filterEnd == -1 ? query.Substring(filterStart) : query.Substring(filterStart, filterEnd - filterStart);
-                        filter = Uri.UnescapeDataString(filter);
-                    }
-
-                    lock (_mainThreadActions)
-                    {
-                        _mainThreadActions.Enqueue(() => StartTestExecution(mode, filter));
-                    }
-
-                    responseString = "{\"status\":\"ok\", \"message\":\"Test execution started.\"}";
-                }
-                else if (request.Url.AbsolutePath == "/test-status")
-                {
-                    var status = _isRunningTests ? "running" : "idle";
-                    var statusResponse = new TestStatusResponse
-                    {
-                        status = status,
-                        isRunning = _isRunningTests,
-                        lastTestTime = _lastTestTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        testResults = _testResults,
-                        testRunId = _currentTestRunId
-                    };
-                    responseString = JsonUtility.ToJson(statusResponse);
-                }
-                else
-                {
-                    response.StatusCode = (int)HttpStatusCode.NotFound;
-                    responseString = "{\"status\":\"error\", \"message\":\"Not Found\"}";
-                }
-
-                    var buffer = Encoding.UTF8.GetBytes(responseString);
-                    response.ContentLength64 = buffer.Length;
-                    response.OutputStream.Write(buffer, 0, buffer.Length);
-                    response.OutputStream.Close();
-                }
-                catch (HttpListenerException)
-                {
-                    break;
-                }
-                catch (ThreadAbortException)
-                {
-                    break;
+                    ProcessHttpRequest(context);
                 }
                 catch (Exception ex)
                 {
-                    if (!_shouldStop)
-                        Debug.LogError($"YamuServer error: {ex.Message}");
+                    HandleHttpException(ex);
                 }
             }
+        }
+
+        static void ProcessHttpRequest(HttpListenerContext context)
+        {
+            var request = context.Request;
+            var response = context.Response;
+
+            SetupResponseHeaders(response);
+
+            var responseString = RouteRequest(request, response);
+            SendResponse(response, responseString);
+        }
+
+        static void SetupResponseHeaders(HttpListenerResponse response)
+        {
+            response.StatusCode = (int)HttpStatusCode.OK;
+            response.ContentType = "application/json";
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
+            response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+        }
+
+        static string RouteRequest(HttpListenerRequest request, HttpListenerResponse response)
+        {
+            return request.Url.AbsolutePath switch
+            {
+                Constants.Endpoints.CompileAndWait => HandleCompileAndWaitRequest(),
+                Constants.Endpoints.CompileStatus => HandleCompileStatusRequest(),
+                Constants.Endpoints.RunTests => HandleRunTestsRequest(request),
+                Constants.Endpoints.TestStatus => HandleTestStatusRequest(),
+                _ => HandleNotFoundRequest(response)
+            };
+        }
+
+        static string HandleCompileAndWaitRequest()
+        {
+            _compileRequestTime = DateTime.Now;
+            lock (_mainThreadActionQueue)
+            {
+                _mainThreadActionQueue.Enqueue(() => CompilationPipeline.RequestScriptCompilation());
+            }
+
+            var (success, message) = WaitForCompilationToStart(_compileRequestTime, TimeSpan.FromSeconds(Constants.CompileTimeoutSeconds));
+            return success ? Constants.JsonResponses.CompileStarted : $"{{\"status\":\"warning\", \"message\":\"{message}\"}}";
+        }
+
+        static (bool success, string message) WaitForCompilationToStart(DateTime requestTime, TimeSpan timeout)
+        {
+            var waitStart = DateTime.Now;
+
+            while ((DateTime.Now - waitStart) < timeout)
+            {
+                if (_isCompiling || EditorApplication.isCompiling)
+                    return (true, "Compilation started.");
+
+                if (_lastCompileTime > requestTime)
+                    return (true, "Compilation completed quickly.");
+
+                Thread.Sleep(Constants.ThreadSleepMilliseconds);
+            }
+
+            return (false, "Compilation may not have started.");
+        }
+
+        static string HandleCompileStatusRequest()
+        {
+            var status = _isCompiling || EditorApplication.isCompiling ? "compiling" : "idle";
+            var statusResponse = new CompileStatusResponse
+            {
+                status = status,
+                isCompiling = _isCompiling || EditorApplication.isCompiling,
+                lastCompileTime = _lastCompileTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                errors = _compilationErrors.ToArray()
+            };
+            return JsonUtility.ToJson(statusResponse);
+        }
+
+        static string HandleRunTestsRequest(HttpListenerRequest request)
+        {
+            var query = request.Url.Query ?? "";
+            var mode = ExtractQueryParameter(query, "mode") ?? "EditMode";
+            var filter = ExtractQueryParameter(query, "filter");
+
+            lock (_mainThreadActionQueue)
+            {
+                _mainThreadActionQueue.Enqueue(() => StartTestExecution(mode, filter));
+            }
+
+            return Constants.JsonResponses.TestStarted;
+        }
+
+        static string ExtractQueryParameter(string query, string paramName)
+        {
+            if (!query.Contains($"{paramName}="))
+                return null;
+
+            var paramStart = query.IndexOf($"{paramName}=") + paramName.Length + 1;
+            var paramEnd = query.IndexOf("&", paramStart);
+            var value = paramEnd == -1 ? query.Substring(paramStart) : query.Substring(paramStart, paramEnd - paramStart);
+            return Uri.UnescapeDataString(value);
+        }
+
+        static string HandleTestStatusRequest()
+        {
+            var status = _isRunningTests ? "running" : "idle";
+            var statusResponse = new TestStatusResponse
+            {
+                status = status,
+                isRunning = _isRunningTests,
+                lastTestTime = _lastTestTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                testResults = _testResults,
+                testRunId = _currentTestRunId
+            };
+            return JsonUtility.ToJson(statusResponse);
+        }
+
+        static string HandleNotFoundRequest(HttpListenerResponse response)
+        {
+            response.StatusCode = (int)HttpStatusCode.NotFound;
+            return "{\"status\":\"error\", \"message\":\"Not Found\"}";
+        }
+
+        static void SendResponse(HttpListenerResponse response, string content)
+        {
+            var buffer = Encoding.UTF8.GetBytes(content);
+            response.ContentLength64 = buffer.Length;
+            response.OutputStream.Write(buffer, 0, buffer.Length);
+            response.OutputStream.Close();
+        }
+
+        static void HandleHttpException(Exception ex)
+        {
+            if (ex is HttpListenerException || ex is ThreadAbortException)
+                return;
+
+            if (!_shouldStop)
+                Debug.LogError($"YamuServer error: {ex.Message}");
         }
 
         static void StartTestExecution(string mode, string filter)
@@ -416,18 +455,22 @@ namespace Yamu
 
         void CollectTestResults(ITestResultAdaptor result, List<TestResult> results)
         {
+            // Recursively collect test results from Unity's test hierarchy
             if (result.Test.IsTestAssembly)
             {
+                // Assembly level - recurse into child test suites
                 foreach (var child in result.Children)
                     CollectTestResults(child, results);
             }
             else if (result.Test.IsSuite)
             {
+                // Test suite level - recurse into individual tests
                 foreach (var child in result.Children)
                     CollectTestResults(child, results);
             }
             else
             {
+                // Individual test - add to results
                 results.Add(new TestResult
                 {
                     name = result.Test.FullName,
