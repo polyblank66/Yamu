@@ -39,11 +39,11 @@ follow [these instructions].
 
 ### 2. Add the MCP Server to the AI Agent
 
-You can either follow the steps in [`MCP-Setup.md`](MCP-Setup.md) manually, or
-let the AI agent do it for you. For example, if you're using Gemini CLI:
+You can either follow the steps in [`yamu-mcp-setup.md`] manually, or let the
+AI agent do it for you. For example, if you're using Gemini CLI:
 
 ```
-> You're Gemini CLI. Follow https://github.com/keijiro/Yamu/blob/main/MCP-Setup.md
+> You're Gemini CLI. Follow yamu-mcp-setup.md
 ```
 
 The "You're ---" statement is important, as some AI agents don't know what they
@@ -51,3 +51,5 @@ are unless explicitly told.
 
 **Note**: You’ll need to update this configuration each time you upgrade Yamu.
 You can simply run the same prompt again to refresh it.
+
+[`yamu-mcp-setup.md`]: Packages/jp.keijiro.yamu/yamu-mcp-setup.md
