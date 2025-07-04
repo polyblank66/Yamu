@@ -307,22 +307,22 @@ namespace Yamu
             try
             {
                 var testMode = mode == "PlayMode" ? TestMode.PlayMode : TestMode.EditMode;
-                
+
                 // Override Enter Play Mode settings for PlayMode tests to avoid domain reload
-                bool originalEnterPlayModeOptionsEnabled = false;
-                EnterPlayModeOptions originalEnterPlayModeOptions = EnterPlayModeOptions.None;
-                
+                var originalEnterPlayModeOptionsEnabled = false;
+                var originalEnterPlayModeOptions = EnterPlayModeOptions.None;
+
                 if (testMode == TestMode.PlayMode)
                 {
                     originalEnterPlayModeOptionsEnabled = EditorSettings.enterPlayModeOptionsEnabled;
                     originalEnterPlayModeOptions = EditorSettings.enterPlayModeOptions;
-                    
+
                     EditorSettings.enterPlayModeOptionsEnabled = true;
                     EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
-                    
+
                     Debug.Log("Overriding Enter Play Mode settings to disable domain reload for PlayMode tests");
                 }
-                
+
                 var api = ScriptableObject.CreateInstance<TestRunnerApi>();
 
                 var filterObj = new Filter
@@ -331,15 +331,13 @@ namespace Yamu
                 };
 
                 if (!string.IsNullOrEmpty(filter))
-                {
                     filterObj.testNames = new[] { filter };
-                }
 
                 Debug.Log($"Starting test execution with mode: {testMode}, filter: '{filter}'");
-                
+
                 // Store original settings in test callbacks for restoration
                 _testCallbacks.SetOriginalPlayModeSettings(testMode == TestMode.PlayMode, originalEnterPlayModeOptionsEnabled, originalEnterPlayModeOptions);
-                
+
                 api.RegisterCallbacks(_testCallbacks);
                 api.Execute(new ExecutionSettings(filterObj));
             }
