@@ -56,6 +56,7 @@ namespace Yamu
         public bool isRunning;
         public string lastTestTime;
         public TestResults testResults;
+        public string testRunId;
     }
 
 
@@ -74,6 +75,7 @@ namespace Yamu
         internal static bool _isRunningTests;
         internal static DateTime _lastTestTime = DateTime.MinValue;
         internal static TestResults _testResults;
+        internal static string _currentTestRunId = null;
         static TestCallbacks _testCallbacks;
 
         static Server()
@@ -255,7 +257,8 @@ namespace Yamu
                         status = status,
                         isRunning = _isRunningTests,
                         lastTestTime = _lastTestTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                        testResults = _testResults
+                        testResults = _testResults,
+                        testRunId = _currentTestRunId
                     };
                     responseString = JsonUtility.ToJson(statusResponse);
                 }
@@ -294,8 +297,12 @@ namespace Yamu
                 return;
             }
 
+            // Generate unique test run ID
+            _currentTestRunId = Guid.NewGuid().ToString();
             _isRunningTests = true;
             _testResults = null;
+
+            Debug.Log($"Starting test execution with ID: {_currentTestRunId}");
 
             try
             {
@@ -342,16 +349,14 @@ namespace Yamu
 
         public void RunFinished(ITestResultAdaptor result)
         {
-            Debug.Log($"Test run finished with status: {result.TestStatus}");
-
-            Server._isRunningTests = false;
-            Server._lastTestTime = DateTime.Now;
+            Debug.Log($"Test run finished with status: {result.TestStatus}, ID: {Server._currentTestRunId}");
 
             var results = new List<TestResult>();
             CollectTestResults(result, results);
 
-            Debug.Log($"Collected {results.Count} test results");
+            Debug.Log($"Collected {results.Count} test results for run ID: {Server._currentTestRunId}");
 
+            // Update results first, then mark as complete
             Server._testResults = new TestResults
             {
                 totalTests = results.Count,
@@ -361,6 +366,10 @@ namespace Yamu
                 duration = result.Duration,
                 results = results.ToArray()
             };
+
+            Server._lastTestTime = DateTime.Now;
+            // Mark as complete LAST to ensure results are available
+            Server._isRunningTests = false;
         }
 
         public void TestStarted(ITestAdaptor test)

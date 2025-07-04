@@ -194,20 +194,52 @@ class MCPServer {
 
     async callRunTests(id, testMode, testFilter, timeoutSeconds) {
         try {
+            // Get initial status to capture current test run ID (if any)
+            const initialStatus = await this.makeHttpRequest('/test-status');
+            const initialTestRunId = initialStatus.testRunId;
+
             // Start test execution
             const runResponse = await this.makeHttpRequest(`/run-tests?mode=${testMode}&filter=${encodeURIComponent(testFilter)}`);
 
-            // Wait for completion with polling
+            // Wait for test execution to actually start and get new test run ID
             const startTime = Date.now();
             const timeoutMs = timeoutSeconds * 1000;
+            let currentTestRunId = initialTestRunId;
 
+            // First, wait for test execution to start (new test run ID)
+            let testStarted = false;
+            const startCheckTimeout = 10000; // 10 seconds timeout for test start
+
+            while (Date.now() - startTime < startCheckTimeout) {
+                try {
+                    const statusResponse = await this.makeHttpRequest('/test-status');
+
+                    if (statusResponse.testRunId && statusResponse.testRunId !== initialTestRunId) {
+                        currentTestRunId = statusResponse.testRunId;
+                        testStarted = true;
+                        break;
+                    }
+
+                    // Wait 200ms before next poll for test start
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                } catch (pollError) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    continue;
+                }
+            }
+
+            if (!testStarted) {
+                throw new Error('Test execution failed to start - no new test run ID detected');
+            }
+
+            // Now wait for completion with the specific test run ID
             while (Date.now() - startTime < timeoutMs) {
                 try {
                     const statusResponse = await this.makeHttpRequest('/test-status');
 
-                    if (statusResponse.status === 'idle') {
-
-                        // Test execution completed
+                    // Check if this is the same test run and it's completed
+                    if (statusResponse.testRunId === currentTestRunId && statusResponse.status === 'idle') {
+                        // Test execution completed for our specific test run
                         const resultText = this.formatTestResults(statusResponse);
 
                         return {
