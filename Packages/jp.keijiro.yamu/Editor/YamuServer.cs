@@ -1,3 +1,27 @@
+//
+// YamuServer.cs - Yamu MCP (Model Context Protocol) Server
+//
+// This file implements an HTTP server that enables external tools to interact with Unity Editor
+// for compilation and test execution via MCP protocol. The server runs on a background thread
+// and provides REST API endpoints for:
+//
+// - Script compilation triggering and status monitoring
+// - PlayMode and EditMode test execution
+// - Real-time compilation error reporting
+// - Test result collection with detailed status
+//
+// Key features:
+// - Automatic domain reload handling via [InitializeOnLoad]
+// - PlayMode test execution without domain reload (preserves server state)
+// - Thread-safe communication between background HTTP server and Unity main thread
+// - Graceful shutdown on Unity exit or domain reload
+//
+// Note: Currently, PlayMode tests work by temporarily modifying Enter Play Mode settings
+// to disable domain reload, which prevents server state loss. However, this approach
+// may not be ideal and should potentially be replaced with a more robust solution that
+// doesn't rely on changing Unity's global editor settings.
+//
+
 using UnityEngine;
 using UnityEditor;
 using System.Net;
@@ -12,6 +36,11 @@ using System.Linq;
 
 namespace Yamu
 {
+    // ============================================================================
+    // CONFIGURATION AND CONSTANTS
+    // ============================================================================
+    
+    // Configuration constants for the Yamu MCP server
     static class Constants
     {
         public const int ServerPort = 17932;
@@ -34,6 +63,11 @@ namespace Yamu
         }
     }
 
+    // ============================================================================
+    // DATA TRANSFER OBJECTS (DTOs)
+    // ============================================================================
+    // These classes define the JSON structure for API requests and responses
+    
     [System.Serializable]
     public class CompileError
     {
@@ -81,23 +115,39 @@ namespace Yamu
         public string testRunId;
     }
 
-
+    // ============================================================================
+    // MAIN HTTP SERVER CLASS
+    // ============================================================================
+    // Handles HTTP server lifecycle, request routing, and Unity integration
+    
     [InitializeOnLoad]
     public static class Server
     {
+        // ========================================================================
+        // STATE VARIABLES
+        // ========================================================================
+        
+        // HTTP server components
         static HttpListener _listener;
         static Thread _thread;
+        
+        // Compilation tracking
         static List<CompileError> _compilationErrors = new();
-        static Queue<Action> _mainThreadActionQueue = new();
         static bool _isCompiling;
-        static DateTime _lastCompileTime = DateTime.MinValue;
-        static DateTime _compileRequestTime = DateTime.MinValue;
+        static DateTime _lastCompileTime = DateTime.MinValue;  // When last compilation finished
+        static DateTime _compileRequestTime = DateTime.MinValue;  // When compilation was requested
+        
+        // Unity main thread action queue (required for Unity API calls)
+        static Queue<Action> _mainThreadActionQueue = new();
+        
+        // Shutdown coordination
         static volatile bool _shouldStop;
 
+        // Test execution state
         internal static bool _isRunningTests;
         internal static DateTime _lastTestTime = DateTime.MinValue;
         internal static TestResults _testResults;
-        internal static string _currentTestRunId = null;
+        internal static string _currentTestRunId = null;  // Unique ID to track test runs across domain reloads
         static TestCallbacks _testCallbacks;
 
         static Server()
@@ -149,7 +199,10 @@ namespace Yamu
             }
         }
 
-
+        // ========================================================================
+        // UNITY EVENT HANDLERS
+        // ========================================================================
+        
         static void OnEditorUpdate()
         {
             while (_mainThreadActionQueue.Count > 0)
@@ -175,6 +228,10 @@ namespace Yamu
             }
         }
 
+        // ========================================================================
+        // HTTP SERVER INFRASTRUCTURE
+        // ========================================================================
+        
         static void HttpRequestProcessor()
         {
             while (!_shouldStop && _listener?.IsListening == true)
@@ -328,6 +385,10 @@ namespace Yamu
                 Debug.LogError($"YamuServer error: {ex.Message}");
         }
 
+        // ========================================================================
+        // TEST EXECUTION COORDINATION
+        // ========================================================================
+        
         static void StartTestExecution(string mode, string filter)
         {
             if (_isRunningTests)
@@ -396,6 +457,11 @@ namespace Yamu
         }
     }
 
+    // ============================================================================
+    // TEST EXECUTION MANAGEMENT
+    // ============================================================================
+    // Handles Unity Test Runner callbacks and result collection
+    
     class TestCallbacks : ICallbacks
     {
         bool _shouldRestorePlayModeSettings;
