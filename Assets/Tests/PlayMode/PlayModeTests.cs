@@ -50,5 +50,45 @@ namespace Yamu.Tests
             // クリーンアップ
             Object.DestroyImmediate(gameObject);
         }
+        
+        [UnityTest]
+        public IEnumerator FailingAssertionTest()
+        {
+            // 意図的に失敗するテスト
+            yield return new WaitForSeconds(0.1f);
+            
+            Assert.IsTrue(false, "This test is designed to fail");
+        }
+        
+        [UnityTest]
+        public IEnumerator FailingEqualityTest()
+        {
+            // 等価性の失敗テスト
+            yield return new WaitForSeconds(0.1f);
+            
+            var expected = 10;
+            var actual = 5;
+            
+            Assert.AreEqual(expected, actual, "Expected 10 but got 5");
+        }
+        
+        [UnityTest]
+        public IEnumerator FailingNullCheckTest()
+        {
+            // null チェックの失敗テスト
+            yield return new WaitForSeconds(0.1f);
+            
+            GameObject nullObject = null;
+            Assert.IsNotNull(nullObject, "This GameObject should not be null but it is");
+        }
+        
+        [UnityTest]
+        public IEnumerator FailingExceptionTest()
+        {
+            // 例外による失敗テスト
+            yield return new WaitForSeconds(0.1f);
+            
+            throw new System.InvalidOperationException("This is an intentional test exception");
+        }
     }
 }

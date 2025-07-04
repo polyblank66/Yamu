@@ -307,6 +307,22 @@ namespace Yamu
             try
             {
                 var testMode = mode == "PlayMode" ? TestMode.PlayMode : TestMode.EditMode;
+                
+                // Override Enter Play Mode settings for PlayMode tests to avoid domain reload
+                bool originalEnterPlayModeOptionsEnabled = false;
+                EnterPlayModeOptions originalEnterPlayModeOptions = EnterPlayModeOptions.None;
+                
+                if (testMode == TestMode.PlayMode)
+                {
+                    originalEnterPlayModeOptionsEnabled = EditorSettings.enterPlayModeOptionsEnabled;
+                    originalEnterPlayModeOptions = EditorSettings.enterPlayModeOptions;
+                    
+                    EditorSettings.enterPlayModeOptionsEnabled = true;
+                    EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
+                    
+                    Debug.Log("Overriding Enter Play Mode settings to disable domain reload for PlayMode tests");
+                }
+                
                 var api = ScriptableObject.CreateInstance<TestRunnerApi>();
 
                 var filterObj = new Filter
@@ -320,6 +336,10 @@ namespace Yamu
                 }
 
                 Debug.Log($"Starting test execution with mode: {testMode}, filter: '{filter}'");
+                
+                // Store original settings in test callbacks for restoration
+                _testCallbacks.SetOriginalPlayModeSettings(testMode == TestMode.PlayMode, originalEnterPlayModeOptionsEnabled, originalEnterPlayModeOptions);
+                
                 api.RegisterCallbacks(_testCallbacks);
                 api.Execute(new ExecutionSettings(filterObj));
             }
@@ -342,6 +362,17 @@ namespace Yamu
 
     class TestCallbacks : ICallbacks
     {
+        bool _shouldRestorePlayModeSettings;
+        bool _originalEnterPlayModeOptionsEnabled;
+        EnterPlayModeOptions _originalEnterPlayModeOptions;
+
+        public void SetOriginalPlayModeSettings(bool shouldRestore, bool originalEnabled, EnterPlayModeOptions originalOptions)
+        {
+            _shouldRestorePlayModeSettings = shouldRestore;
+            _originalEnterPlayModeOptionsEnabled = originalEnabled;
+            _originalEnterPlayModeOptions = originalOptions;
+        }
+
         public void RunStarted(ITestAdaptor testsToRun)
         {
             Debug.Log($"Test run started with {testsToRun.Children?.Count() ?? 0} test suites");
@@ -370,6 +401,14 @@ namespace Yamu
             Server._lastTestTime = DateTime.Now;
             // Mark as complete LAST to ensure results are available
             Server._isRunningTests = false;
+
+            // Restore original Enter Play Mode settings if they were overridden
+            if (_shouldRestorePlayModeSettings)
+            {
+                EditorSettings.enterPlayModeOptionsEnabled = _originalEnterPlayModeOptionsEnabled;
+                EditorSettings.enterPlayModeOptions = _originalEnterPlayModeOptions;
+                Debug.Log("Restored original Enter Play Mode settings after PlayMode test completion");
+            }
         }
 
         public void TestStarted(ITestAdaptor test)
