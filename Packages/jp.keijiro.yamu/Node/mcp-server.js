@@ -2,19 +2,36 @@
 
 const http = require('http');
 
+// Custom error classes for Unity-specific issues
+class UnityUnavailableError extends Error {
+    constructor(message, data) {
+        super(message);
+        this.name = 'UnityUnavailableError';
+        this.data = data;
+    }
+}
+
+class UnityRestartingError extends Error {
+    constructor(message, data) {
+        super(message);
+        this.name = 'UnityRestartingError';
+        this.data = data;
+    }
+}
+
 class MCPServer {
     constructor() {
         this.unityServerUrl = 'http://localhost:17932';
         this.capabilities = {
             tools: {
                 compile_and_wait: {
-                    description: "Request Unity Editor to compile C# scripts and wait for completion",
+                    description: "Request Unity Editor to compile C# scripts and wait for completion. Returns compilation status and any errors. IMPORTANT: For structural changes (new/deleted/moved files), call refresh_assets first (use force=true for deletions), wait for MCP responsiveness, then call this tool. Without refresh, Unity may not detect file changes. LLM HINTS: If you get Error -32603 with 'Unity HTTP server restarting', this is normal during compilation - wait 3-5 seconds and retry. If you get 'Unity Editor HTTP server unavailable', verify Unity Editor is running with YAMU project open.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             timeout: {
                                 type: "number",
-                                description: "Timeout in seconds (default: 30)",
+                                description: "Timeout in seconds (default: 30). LLM HINT: Use longer timeouts (45-60s) for large projects or complex compilation tasks.",
                                 default: 30
                             }
                         },
@@ -22,25 +39,39 @@ class MCPServer {
                     }
                 },
                 run_tests: {
-                    description: "Execute Unity tests and wait for completion",
+                    description: "Execute Unity Test Runner tests and wait for completion. Returns test results including pass/fail counts and detailed failure information. Supports both EditMode (editor tests) and PlayMode (runtime tests) execution. LLM HINTS: EditMode tests run faster but only test editor functionality. PlayMode tests simulate actual game runtime but take longer. If tests fail to start, Unity Test Runner may need initialization - wait and retry.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             test_mode: {
                                 type: "string",
-                                description: "Test mode: EditMode or PlayMode (default: PlayMode)",
+                                description: "Test mode: EditMode or PlayMode (default: PlayMode). LLM HINT: Use EditMode for quick verification of basic functionality, PlayMode for comprehensive runtime testing.",
                                 enum: ["EditMode", "PlayMode"],
                                 default: "PlayMode"
                             },
                             test_filter: {
                                 type: "string",
-                                description: "Test filter pattern (optional)",
+                                description: "Test filter pattern (optional). LLM HINT: Use class names like 'MyTestClass' or namespaces like 'MyProject.Tests' to run specific test subsets.",
                                 default: ""
                             },
                             timeout: {
                                 type: "number",
-                                description: "Timeout in seconds (default: 60)",
+                                description: "Timeout in seconds (default: 60). LLM HINT: PlayMode tests typically need 60-120s, EditMode tests usually complete within 30s.",
                                 default: 60
+                            }
+                        },
+                        required: []
+                    }
+                },
+                refresh_assets: {
+                    description: "Force Unity to refresh the asset database. CRITICAL for file operations - Unity may not detect file system changes without this. Regular refresh works for new files, but force=true is required for deletions to prevent CS2001 'Source file could not be found' errors. Workflow: 1) Make file changes, 2) Call refresh_assets (force=true for deletions), 3) Wait for MCP responsiveness, 4) Call compile_and_wait. LLM HINTS: Always call this after creating/deleting/moving files in Unity project. Unity HTTP server will restart during refresh - expect temporary -32603 errors that resolve automatically.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            force: {
+                                type: "boolean",
+                                description: "Use ImportAssetOptions.ForceUpdate for stronger refresh. Set to true when deleting files to prevent Unity CS2001 errors. False is sufficient for new file creation. LLM HINT: Use force=true when deleting files, force=false when creating new files.",
+                                default: false
                             }
                         },
                         required: []
@@ -117,6 +148,8 @@ class MCPServer {
                     return await this.callCompileAndWait(id, args.timeout || 30);
                 case 'run_tests':
                     return await this.callRunTests(id, args.test_mode || 'PlayMode', args.test_filter || '', args.timeout || 60);
+                case 'refresh_assets':
+                    return await this.callRefreshAssets(id, args.force || false);
                 default:
                     return {
                         jsonrpc: '2.0',
@@ -128,14 +161,28 @@ class MCPServer {
                     };
             }
         } catch (error) {
-            return {
-                jsonrpc: '2.0',
-                id,
-                error: {
-                    code: -32603,
-                    message: `Tool execution failed: ${error.message}`
-                }
-            };
+            // Enhanced error handling with LLM-friendly instructions
+            if (error instanceof UnityUnavailableError || error instanceof UnityRestartingError) {
+                return {
+                    jsonrpc: '2.0',
+                    id,
+                    error: {
+                        code: -32603,
+                        message: error.message,
+                        data: error.data
+                    }
+                };
+            } else {
+                // Generic error fallback
+                return {
+                    jsonrpc: '2.0',
+                    id,
+                    error: {
+                        code: -32603,
+                        message: `Tool execution failed: ${error.message}`
+                    }
+                };
+            }
         }
     }
 
@@ -271,6 +318,27 @@ class MCPServer {
         }
     }
 
+    async callRefreshAssets(id, force = false) {
+        try {
+            // Call Unity refresh endpoint with force parameter
+            const refreshResponse = await this.makeHttpRequest(`/refresh-assets?force=${force}`);
+
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: refreshResponse.message || 'Asset database refresh completed.'
+                    }]
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Failed to refresh assets: ${error.message}`);
+        }
+    }
+
     formatTestResults(statusResponse) {
         if (!statusResponse.testResults) {
             return 'Test execution completed but no results available.';
@@ -308,16 +376,68 @@ class MCPServer {
             });
 
             req.on('error', (error) => {
-                reject(new Error(`HTTP request failed: ${error.message}`));
+                // Enhanced error detection for Unity server issues
+                reject(this.createUnityServerError(error));
             });
 
             req.setTimeout(15000, () => {
                 req.destroy();
-                reject(new Error('Request timeout'));
+                reject(this.createUnityTimeoutError());
             });
 
             req.end();
         });
+    }
+
+    createUnityServerError(error) {
+        // Detect Unity server unavailability vs temporary restart
+        if (error.code === 'ECONNREFUSED') {
+            // Unity Editor not running or HTTP server not started
+            return new UnityUnavailableError(
+                `Unity Editor HTTP server unavailable at ${this.unityServerUrl}`,
+                {
+                    errorType: 'unity_server_unavailable',
+                    instructions: 'INSTRUCTIONS FOR LLM: 1) Verify Unity Editor is running and YAMU project is open 2) Check if Unity HTTP server is active (should start automatically) 3) Test with: curl http://localhost:17932/compile-status 4) If Unity is running but server is down, restart Unity Editor',
+                    retryable: false,
+                    originalError: error.message
+                }
+            );
+        } else if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+            // Unity HTTP server restarting (temporary)
+            return new UnityRestartingError(
+                'Unity HTTP server restarting during compilation/asset refresh',
+                {
+                    errorType: 'unity_server_restarting',
+                    instructions: 'INSTRUCTIONS FOR LLM: This is normal behavior during Unity compilation. Wait 3-5 seconds and retry the operation. Unity automatically restarts HTTP server during script compilation and asset database refresh.',
+                    retryable: true,
+                    originalError: error.message
+                }
+            );
+        } else {
+            // Other HTTP errors
+            return new Error(`HTTP request failed: ${error.message}`);
+        }
+    }
+
+    createUnityTimeoutError() {
+        return new UnityRestartingError(
+            'Unity HTTP server timeout - likely restarting during compilation',
+            {
+                errorType: 'unity_server_restarting',
+                instructions: 'INSTRUCTIONS FOR LLM: Unity server timeout usually indicates compilation or asset refresh in progress. Wait 3-5 seconds and retry the operation.',
+                retryable: true,
+                originalError: 'Request timeout after 15 seconds'
+            }
+        );
+    }
+
+    async checkUnityServerHealth() {
+        try {
+            const response = await this.makeHttpRequest('/compile-status');
+            return { available: true, response };
+        } catch (error) {
+            return { available: false, error };
+        }
     }
 
     start() {

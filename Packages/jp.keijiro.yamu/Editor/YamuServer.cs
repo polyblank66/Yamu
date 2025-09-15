@@ -54,12 +54,14 @@ namespace Yamu
             public const string CompileStatus = "/compile-status";
             public const string RunTests = "/run-tests";
             public const string TestStatus = "/test-status";
+            public const string RefreshAssets = "/refresh-assets";
         }
 
         public static class JsonResponses
         {
             public const string CompileStarted = "{\"status\":\"ok\", \"message\":\"Compilation started.\"}";
             public const string TestStarted = "{\"status\":\"ok\", \"message\":\"Test execution started.\"}";
+            public const string AssetsRefreshed = "{\"status\":\"ok\", \"message\":\"Asset database refreshed.\"}";
         }
     }
 
@@ -139,7 +141,16 @@ namespace Yamu
         
         // Unity main thread action queue (required for Unity API calls)
         static Queue<Action> _mainThreadActionQueue = new();
-        
+
+        // Asset refresh state tracking (prevent concurrent refresh operations)
+        static bool _isRefreshing = false;
+        static bool _isMonitoringRefresh = false;
+        static bool _unityIsUpdating = false;  // Cache Unity's isUpdating state for thread-safe access
+        static readonly object _refreshLock = new object();
+
+        // Test execution state tracking (prevent concurrent test runs)
+        static readonly object _testLock = new object();
+
         // Shutdown coordination
         static volatile bool _shouldStop;
 
@@ -276,6 +287,7 @@ namespace Yamu
                 Constants.Endpoints.CompileStatus => HandleCompileStatusRequest(),
                 Constants.Endpoints.RunTests => HandleRunTestsRequest(request),
                 Constants.Endpoints.TestStatus => HandleTestStatusRequest(),
+                Constants.Endpoints.RefreshAssets => HandleRefreshAssetsRequest(request),
                 _ => HandleNotFoundRequest(response)
             };
         }
@@ -296,6 +308,28 @@ namespace Yamu
         {
             var waitStart = DateTime.Now;
 
+            // First, wait for asset refresh to complete if it's in progress
+            while ((DateTime.Now - waitStart) < timeout)
+            {
+                // Check both our flag and Unity's cached refresh state (thread-safe)
+                bool refreshInProgress, unityIsUpdating;
+                lock (_refreshLock)
+                {
+                    refreshInProgress = _isRefreshing;
+                    unityIsUpdating = _unityIsUpdating;
+                }
+
+                if (!refreshInProgress && !unityIsUpdating)
+                    break; // Asset refresh is complete
+
+                Thread.Sleep(Constants.ThreadSleepMilliseconds);
+            }
+
+            // If we timed out waiting for refresh, return failure
+            if ((DateTime.Now - waitStart) >= timeout)
+                return (false, "Timed out waiting for asset refresh to complete.");
+
+            // Now wait for compilation to start
             while ((DateTime.Now - waitStart) < timeout)
             {
                 if (_isCompiling || EditorApplication.isCompiling)
@@ -329,9 +363,22 @@ namespace Yamu
             var mode = ExtractQueryParameter(query, "mode") ?? "EditMode";
             var filter = ExtractQueryParameter(query, "filter");
 
+            // Check if tests are already running (non-blocking check)
+            lock (_testLock)
+            {
+                if (_isRunningTests)
+                {
+                    // Return immediately with warning - don't queue another test run
+                    return "{\"status\":\"warning\",\"message\":\"Tests are already running. Please wait for current test run to complete.\"}";
+                }
+
+                // Mark test run as starting
+                _isRunningTests = true;
+            }
+
             lock (_mainThreadActionQueue)
             {
-                _mainThreadActionQueue.Enqueue(() => StartTestExecution(mode, filter));
+                _mainThreadActionQueue.Enqueue(() => StartTestExecutionWithRefreshWait(mode, filter));
             }
 
             return Constants.JsonResponses.TestStarted;
@@ -376,9 +423,100 @@ namespace Yamu
             response.OutputStream.Close();
         }
 
+        static void MonitorRefreshCompletion()
+        {
+            // Update cached state (this runs on main thread)
+            bool unityIsUpdating = EditorApplication.isUpdating;
+            lock (_refreshLock)
+            {
+                _unityIsUpdating = unityIsUpdating;
+            }
+
+            // Check if AssetDatabase refresh is complete
+            if (!unityIsUpdating)
+            {
+                // Refresh is complete, reset the flags and unsubscribe
+                lock (_refreshLock)
+                {
+                    _isRefreshing = false;
+                    _isMonitoringRefresh = false;
+                    _unityIsUpdating = false;
+                }
+                EditorApplication.update -= MonitorRefreshCompletion;
+            }
+        }
+
+        static string HandleRefreshAssetsRequest(HttpListenerRequest request)
+        {
+            // Parse force parameter from query string
+            bool force = request.Url.Query.Contains("force=true");
+
+            // Check if refresh is already in progress (non-blocking check)
+            lock (_refreshLock)
+            {
+                if (_isRefreshing)
+                {
+                    // Return immediately with warning - don't queue another refresh
+                    return "{\"status\":\"warning\",\"message\":\"Asset refresh already in progress. Please wait for current refresh to complete.\"}";
+                }
+
+                // Mark refresh as starting
+                _isRefreshing = true;
+            }
+
+            // Queue the refresh operation on main thread
+            lock (_mainThreadActionQueue)
+            {
+                _mainThreadActionQueue.Enqueue(() => {
+                    try
+                    {
+                        if (force)
+                        {
+                            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+                        }
+                        else
+                        {
+                            AssetDatabase.Refresh();
+                        }
+
+                        // Start monitoring for refresh completion using EditorApplication.isUpdating
+                        lock (_refreshLock)
+                        {
+                            if (!_isMonitoringRefresh)
+                            {
+                                _isMonitoringRefresh = true;
+                                _unityIsUpdating = true;  // Assume refresh is starting
+                                EditorApplication.update += MonitorRefreshCompletion;
+                            }
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        // Reset refresh flags immediately if AssetDatabase.Refresh() fails
+                        lock (_refreshLock)
+                        {
+                            _isRefreshing = false;
+                            _isMonitoringRefresh = false;
+                            _unityIsUpdating = false;
+                        }
+                        Debug.LogError($"AssetDatabase.Refresh failed: {ex.Message}");
+                    }
+                });
+            }
+
+            // Return success response immediately (operation queued)
+            return Constants.JsonResponses.AssetsRefreshed;
+        }
+
         static void HandleHttpException(Exception ex)
         {
             if (ex is HttpListenerException || ex is ThreadAbortException)
+                return;
+
+            // Ignore common client disconnection errors
+            if (ex.Message.Contains("transport connection") ||
+                ex.Message.Contains("forcibly closed") ||
+                ex.Message.Contains("connection was aborted"))
                 return;
 
             if (!_shouldStop)
@@ -389,17 +527,61 @@ namespace Yamu
         // TEST EXECUTION COORDINATION
         // ========================================================================
         
-        static void StartTestExecution(string mode, string filter)
+        static void StartTestExecutionWithRefreshWait(string mode, string filter)
         {
-            if (_isRunningTests)
+            try
             {
-                Debug.LogWarning("Test execution already in progress");
-                return;
+                // First, wait for asset refresh to complete if it's in progress
+                WaitForAssetRefreshCompletion();
+
+                // Now start the actual test execution
+                StartTestExecution(mode, filter);
+            }
+            catch (System.Exception ex)
+            {
+                // Reset test flag immediately if starting fails
+                lock (_testLock)
+                {
+                    _isRunningTests = false;
+                }
+                Debug.LogError($"Failed to start test execution: {ex.Message}");
+            }
+        }
+
+        static void WaitForAssetRefreshCompletion()
+        {
+            // Wait for asset refresh to complete (similar to WaitForCompilationToStart but simpler)
+            int maxWait = 30000; // 30 seconds max wait
+            int waited = 0;
+            const int sleepInterval = 100; // 100ms intervals
+
+            while (waited < maxWait)
+            {
+                // Check both our flag and Unity's cached refresh state (thread-safe)
+                bool refreshInProgress, unityIsUpdating;
+                lock (_refreshLock)
+                {
+                    refreshInProgress = _isRefreshing;
+                    unityIsUpdating = _unityIsUpdating;
+                }
+
+                if (!refreshInProgress && !unityIsUpdating)
+                    break; // Asset refresh is complete
+
+                System.Threading.Thread.Sleep(sleepInterval);
+                waited += sleepInterval;
             }
 
+            if (waited >= maxWait)
+            {
+                Debug.LogWarning("Timed out waiting for asset refresh to complete before running tests");
+            }
+        }
+
+        static void StartTestExecution(string mode, string filter)
+        {
             // Generate unique test run ID
             _currentTestRunId = Guid.NewGuid().ToString();
-            _isRunningTests = true;
             _testResults = null;
 
             Debug.Log($"Starting test execution with ID: {_currentTestRunId}");
