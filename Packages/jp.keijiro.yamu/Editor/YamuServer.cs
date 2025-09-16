@@ -613,8 +613,13 @@ namespace Yamu
                 };
 
                 if (!string.IsNullOrEmpty(filter))
-                    filterObj.testNames = new[] { filter };
-
+                {
+                    var testNames = filter.Split('|')
+                        .Select(x => x.Trim())
+                        .Where(x => !string.IsNullOrEmpty(x))
+                        .ToArray();
+                    filterObj.testNames = testNames;
+                }
 
                 // Store original settings in test callbacks for restoration
                 _testCallbacks.SetOriginalPlayModeSettings(testMode == TestMode.PlayMode, originalEnterPlayModeOptionsEnabled, originalEnterPlayModeOptions);

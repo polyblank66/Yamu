@@ -51,7 +51,7 @@ class MCPServer {
                             },
                             test_filter: {
                                 type: "string",
-                                description: "Test filter pattern (optional). LLM HINT: Use class names like 'MyTestClass' or namespaces like 'MyProject.Tests' to run specific test subsets.",
+                                description: "Test filter pattern (optional). The full name of the tests to match the filter, including namespace and fixture. This is usually in the format Namespace.FixtureName.TestName. If the test has test arguments, then include them in parenthesis. E.g. MyProject.Tests.MyTestClass2.MyTestWithMultipleValues(1). Use pipe '|' to separate different test names.",
                                 default: ""
                             },
                             timeout: {
