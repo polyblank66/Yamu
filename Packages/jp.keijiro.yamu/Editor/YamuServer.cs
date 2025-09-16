@@ -362,6 +362,7 @@ namespace Yamu
             var query = request.Url.Query ?? "";
             var mode = ExtractQueryParameter(query, "mode") ?? "EditMode";
             var filter = ExtractQueryParameter(query, "filter");
+            var filterRegex = ExtractQueryParameter(query, "filter_regex");
 
             // Check if tests are already running (non-blocking check)
             lock (_testLock)
@@ -378,7 +379,7 @@ namespace Yamu
 
             lock (_mainThreadActionQueue)
             {
-                _mainThreadActionQueue.Enqueue(() => StartTestExecutionWithRefreshWait(mode, filter));
+                _mainThreadActionQueue.Enqueue(() => StartTestExecutionWithRefreshWait(mode, filter, filterRegex));
             }
 
             return Constants.JsonResponses.TestStarted;
@@ -527,7 +528,7 @@ namespace Yamu
         // TEST EXECUTION COORDINATION
         // ========================================================================
         
-        static void StartTestExecutionWithRefreshWait(string mode, string filter)
+        static void StartTestExecutionWithRefreshWait(string mode, string filter, string filterRegex)
         {
             try
             {
@@ -535,7 +536,7 @@ namespace Yamu
                 WaitForAssetRefreshCompletion();
 
                 // Now start the actual test execution
-                StartTestExecution(mode, filter);
+                StartTestExecution(mode, filter, filterRegex);
             }
             catch (System.Exception ex)
             {
@@ -578,7 +579,7 @@ namespace Yamu
             }
         }
 
-        static void StartTestExecution(string mode, string filter)
+        static void StartTestExecution(string mode, string filter, string filterRegex)
         {
             // Generate unique test run ID
             _currentTestRunId = Guid.NewGuid().ToString();
@@ -619,6 +620,11 @@ namespace Yamu
                         .Where(x => !string.IsNullOrEmpty(x))
                         .ToArray();
                     filterObj.testNames = testNames;
+                }
+
+                if (!string.IsNullOrEmpty(filterRegex))
+                {
+                    filterObj.groupNames = new[] { filterRegex };
                 }
 
                 // Store original settings in test callbacks for restoration

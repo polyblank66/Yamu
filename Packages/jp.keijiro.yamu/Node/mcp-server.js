@@ -54,6 +54,11 @@ class MCPServer {
                                 description: "Test filter pattern (optional). The full name of the tests to match the filter, including namespace and fixture. This is usually in the format Namespace.FixtureName.TestName. If the test has test arguments, then include them in parenthesis. E.g. MyProject.Tests.MyTestClass2.MyTestWithMultipleValues(1). Use pipe '|' to separate different test names.",
                                 default: ""
                             },
+                            test_filter_regex: {
+                                type: "string",
+                                description: "Test filter regex pattern (optional). Use .NET Regex syntax to match test names by pattern. This is mapped to Unity's Filter.groupNames property for flexible test selection.",
+                                default: ""
+                            },
                             timeout: {
                                 type: "number",
                                 description: "Timeout in seconds (default: 60). LLM HINT: PlayMode tests typically need 60-120s, EditMode tests usually complete within 30s.",
@@ -147,7 +152,7 @@ class MCPServer {
                 case 'compile_and_wait':
                     return await this.callCompileAndWait(id, args.timeout || 30);
                 case 'run_tests':
-                    return await this.callRunTests(id, args.test_mode || 'PlayMode', args.test_filter || '', args.timeout || 60);
+                    return await this.callRunTests(id, args.test_mode || 'PlayMode', args.test_filter || '', args.test_filter_regex || '', args.timeout || 60);
                 case 'refresh_assets':
                     return await this.callRefreshAssets(id, args.force || false);
                 default:
@@ -239,14 +244,14 @@ class MCPServer {
         }
     }
 
-    async callRunTests(id, testMode, testFilter, timeoutSeconds) {
+    async callRunTests(id, testMode, testFilter, testFilterRegex, timeoutSeconds) {
         try {
             // Get initial status to capture current test run ID (if any)
             const initialStatus = await this.makeHttpRequest('/test-status');
             const initialTestRunId = initialStatus.testRunId;
 
             // Start test execution
-            const runResponse = await this.makeHttpRequest(`/run-tests?mode=${testMode}&filter=${encodeURIComponent(testFilter)}`);
+            const runResponse = await this.makeHttpRequest(`/run-tests?mode=${testMode}&filter=${encodeURIComponent(testFilter)}&filter_regex=${encodeURIComponent(testFilterRegex)}`);
 
             // Wait for test execution to actually start and get new test run ID
             const startTime = Date.now();
