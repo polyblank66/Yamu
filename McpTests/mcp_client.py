@@ -151,7 +151,7 @@ class MCPClient:
             "arguments": {"timeout": timeout}
         })
 
-    async def run_tests(self, test_mode: str = "PlayMode", test_filter: str = "", timeout: int = 60) -> Dict[str, Any]:
+    async def run_tests(self, test_mode: str = "PlayMode", test_filter: str = "", test_filter_regex: str = "", timeout: int = 60) -> Dict[str, Any]:
         """Run tests
 
         Automatically retries on Unity HTTP server restart (-32603 errors).
@@ -161,6 +161,7 @@ class MCPClient:
             "arguments": {
                 "test_mode": test_mode,
                 "test_filter": test_filter,
+                "test_filter_regex": test_filter_regex,
                 "timeout": timeout
             }
         })
