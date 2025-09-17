@@ -81,6 +81,14 @@ class MCPServer {
                         },
                         required: []
                     }
+                },
+                editor_status: {
+                    description: "Get current Unity Editor status including compilation state, test execution state, and play mode state. Returns real-time information about what the editor is currently doing.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {},
+                        required: []
+                    }
                 }
             }
         };
@@ -155,6 +163,8 @@ class MCPServer {
                     return await this.callRunTests(id, args.test_mode || 'PlayMode', args.test_filter || '', args.test_filter_regex || '', args.timeout || 60);
                 case 'refresh_assets':
                     return await this.callRefreshAssets(id, args.force || false);
+                case 'editor_status':
+                    return await this.callEditorStatus(id);
                 default:
                     return {
                         jsonrpc: '2.0',
@@ -341,6 +351,27 @@ class MCPServer {
 
         } catch (error) {
             throw new Error(`Failed to refresh assets: ${error.message}`);
+        }
+    }
+
+    async callEditorStatus(id) {
+        try {
+            // Call Unity editor-status endpoint
+            const statusResponse = await this.makeHttpRequest('/editor-status');
+
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify(statusResponse)
+                    }]
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Failed to get editor status: ${error.message}`);
         }
     }
 

@@ -55,6 +55,7 @@ namespace Yamu
             public const string RunTests = "/run-tests";
             public const string TestStatus = "/test-status";
             public const string RefreshAssets = "/refresh-assets";
+            public const string EditorStatus = "/editor-status";
         }
 
         public static class JsonResponses
@@ -117,6 +118,14 @@ namespace Yamu
         public string testRunId;
     }
 
+    [System.Serializable]
+    public class EditorStatusResponse
+    {
+        public bool isCompiling;
+        public bool isRunningTests;
+        public bool isPlaying;
+    }
+
     // ============================================================================
     // MAIN HTTP SERVER CLASS
     // ============================================================================
@@ -160,6 +169,9 @@ namespace Yamu
         internal static TestResults _testResults;
         internal static string _currentTestRunId = null;  // Unique ID to track test runs across domain reloads
         static TestCallbacks _testCallbacks;
+
+        // Play mode state tracking (cached for thread-safe access)
+        static bool _isPlaying = false;
 
         static Server()
         {
@@ -218,6 +230,9 @@ namespace Yamu
         {
             while (_mainThreadActionQueue.Count > 0)
                 _mainThreadActionQueue.Dequeue().Invoke();
+
+            // Update cached play mode state (thread-safe)
+            _isPlaying = EditorApplication.isPlaying;
         }
 
         static void OnCompilationStarted(object obj) => _isCompiling = true;
@@ -288,6 +303,7 @@ namespace Yamu
                 Constants.Endpoints.RunTests => HandleRunTestsRequest(request),
                 Constants.Endpoints.TestStatus => HandleTestStatusRequest(),
                 Constants.Endpoints.RefreshAssets => HandleRefreshAssetsRequest(request),
+                Constants.Endpoints.EditorStatus => HandleEditorStatusRequest(),
                 _ => HandleNotFoundRequest(response)
             };
         }
@@ -406,6 +422,17 @@ namespace Yamu
                 lastTestTime = _lastTestTime.ToString("yyyy-MM-dd HH:mm:ss"),
                 testResults = _testResults,
                 testRunId = _currentTestRunId
+            };
+            return JsonUtility.ToJson(statusResponse);
+        }
+
+        static string HandleEditorStatusRequest()
+        {
+            var statusResponse = new EditorStatusResponse
+            {
+                isCompiling = _isCompiling || EditorApplication.isCompiling,
+                isRunningTests = _isRunningTests,
+                isPlaying = _isPlaying
             };
             return JsonUtility.ToJson(statusResponse);
         }
