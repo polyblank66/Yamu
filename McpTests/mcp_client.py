@@ -176,6 +176,13 @@ class MCPClient:
             "arguments": {"force": force}
         })
 
+    async def editor_status(self) -> Dict[str, Any]:
+        """Get editor status (compilation, testing, play mode)"""
+        return await self._send_request("tools/call", {
+            "name": "editor_status",
+            "arguments": {}
+        })
+
     async def __aenter__(self):
         await self.start()
         return self
