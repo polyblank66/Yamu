@@ -9,7 +9,12 @@ Unity projects.
 - `compile_and_wait` - Triggers Unity Editor compilation, waits for completion,
   and returns compilation results including any errors
 - `run_tests` - Executes Unity Test Runner tests (both EditMode and PlayMode)
-  with real-time status monitoring and detailed result reporting
+  with real-time status monitoring and detailed result reporting. Supports
+  filtering by test names and regex patterns
+- `refresh_assets` - Forces Unity to refresh the asset database. Critical for
+  file operations to ensure Unity detects file system changes (new/deleted/moved files)
+- `editor_status` - Gets current Unity Editor status including compilation state,
+  test execution state, and play mode state for real-time monitoring
 
 ## Purpose
 
