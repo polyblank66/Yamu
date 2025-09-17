@@ -184,6 +184,20 @@ class MCPClient:
             "arguments": {}
         })
 
+    async def compile_status(self) -> Dict[str, Any]:
+        """Get compilation status without triggering compilation"""
+        return await self._send_request("tools/call", {
+            "name": "compile_status",
+            "arguments": {}
+        })
+
+    async def test_status(self) -> Dict[str, Any]:
+        """Get test execution status without running tests"""
+        return await self._send_request("tools/call", {
+            "name": "test_status",
+            "arguments": {}
+        })
+
     async def __aenter__(self):
         await self.start()
         return self

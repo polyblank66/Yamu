@@ -89,6 +89,22 @@ class MCPServer {
                         properties: {},
                         required: []
                     }
+                },
+                compile_status: {
+                    description: "Get current compilation status without triggering compilation. Returns compilation state, last compile time, and any compilation errors.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {},
+                        required: []
+                    }
+                },
+                test_status: {
+                    description: "Get current test execution status without running tests. Returns test execution state, last test time, test results, and test run ID.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {},
+                        required: []
+                    }
                 }
             }
         };
@@ -165,6 +181,10 @@ class MCPServer {
                     return await this.callRefreshAssets(id, args.force || false);
                 case 'editor_status':
                     return await this.callEditorStatus(id);
+                case 'compile_status':
+                    return await this.callCompileStatus(id);
+                case 'test_status':
+                    return await this.callTestStatus(id);
                 default:
                     return {
                         jsonrpc: '2.0',
@@ -372,6 +392,48 @@ class MCPServer {
 
         } catch (error) {
             throw new Error(`Failed to get editor status: ${error.message}`);
+        }
+    }
+
+    async callCompileStatus(id) {
+        try {
+            // Call Unity compile-status endpoint
+            const statusResponse = await this.makeHttpRequest('/compile-status');
+
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify(statusResponse)
+                    }]
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Failed to get compile status: ${error.message}`);
+        }
+    }
+
+    async callTestStatus(id) {
+        try {
+            // Call Unity test-status endpoint
+            const statusResponse = await this.makeHttpRequest('/test-status');
+
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify(statusResponse)
+                    }]
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Failed to get test status: ${error.message}`);
         }
     }
 
