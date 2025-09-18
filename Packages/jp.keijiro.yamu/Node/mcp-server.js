@@ -19,9 +19,172 @@ class UnityRestartingError extends Error {
     }
 }
 
+// Configuration manager for loading Unity settings via HTTP endpoint
+class ConfigManager {
+    constructor(unityServerUrl) {
+        this.unityServerUrl = unityServerUrl;
+        this.config = null;
+        this.lastFetchTime = 0;
+        this.cacheExpiry = 30000; // Cache for 30 seconds
+    }
+
+    async getConfiguration() {
+        const now = Date.now();
+
+        // Return cached config if still valid
+        if (this.config && (now - this.lastFetchTime) < this.cacheExpiry) {
+            return this.config;
+        }
+
+        try {
+            // Try to fetch settings from Unity
+            const response = await this.makeHttpRequest('/mcp-settings');
+            this.config = response;
+            this.lastFetchTime = now;
+            return this.config;
+        } catch (error) {
+            // Unity not available or error occurred, use defaults
+            if (!this.config) {
+                this.config = this.getDefaultConfiguration();
+            }
+            return this.config;
+        }
+    }
+
+    getDefaultConfiguration() {
+        return {
+            responseCharacterLimit: 25000,
+            enableTruncation: true,
+            truncationMessage: "\n\n... (response truncated due to length limit)"
+        };
+    }
+
+    async makeHttpRequest(path) {
+        return new Promise((resolve, reject) => {
+            const http = require('http');
+            const req = http.request(`${this.unityServerUrl}${path}`, { method: 'GET' }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        resolve(parsed);
+                    } catch (error) {
+                        reject(new Error(`Invalid JSON response: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                reject(error);
+            });
+
+            req.setTimeout(5000, () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+
+            req.end();
+        });
+    }
+}
+
+// Response formatter that applies character limits and smart truncation
+class ResponseFormatter {
+    constructor(config) {
+        this.config = config;
+        this.calculateAvailableSpace();
+    }
+
+    updateConfig(config) {
+        this.config = config;
+        this.calculateAvailableSpace();
+    }
+
+    calculateAvailableSpace() {
+        if (!this.config.enableTruncation) {
+            this.availableContentSpace = Infinity;
+            return;
+        }
+
+        // Calculate overhead of MCP response structure
+        const sampleResponse = JSON.stringify({
+            jsonrpc: '2.0',
+            id: 999999,
+            result: {
+                content: [{
+                    type: 'text',
+                    text: ''
+                }]
+            }
+        });
+
+        const mcpOverhead = sampleResponse.length;
+        const truncationOverhead = this.config.truncationMessage.length;
+        const buffer = 50; // Safety buffer
+
+        this.availableContentSpace = Math.max(
+            1000, // Minimum space for content
+            this.config.responseCharacterLimit - mcpOverhead - truncationOverhead - buffer
+        );
+    }
+
+    formatResponse(content) {
+        if (!this.config.enableTruncation || content.length <= this.availableContentSpace) {
+            return content;
+        }
+
+        // Smart truncation - try to preserve important information
+        let truncated = content.substring(0, this.availableContentSpace);
+
+        // Try to truncate at word boundary if possible
+        const lastSpaceIndex = truncated.lastIndexOf(' ');
+        const lastNewlineIndex = truncated.lastIndexOf('\n');
+        const breakPoint = Math.max(lastSpaceIndex, lastNewlineIndex);
+
+        if (breakPoint > this.availableContentSpace * 0.8) { // Only use break point if it's not too far back
+            truncated = content.substring(0, breakPoint);
+        }
+
+        return truncated + this.config.truncationMessage;
+    }
+
+    // Smart truncation for JSON responses - preserve structure when possible
+    formatJsonResponse(jsonObj) {
+        const jsonString = JSON.stringify(jsonObj);
+
+        if (!this.config.enableTruncation || jsonString.length <= this.availableContentSpace) {
+            return jsonString;
+        }
+
+        // For JSON responses, try to preserve the most important parts
+        if (jsonObj.errors && Array.isArray(jsonObj.errors)) {
+            // For compilation errors, show first few errors
+            const truncatedObj = { ...jsonObj };
+            const errorLimit = Math.floor(this.availableContentSpace / 200); // Estimate ~200 chars per error
+            truncatedObj.errors = jsonObj.errors.slice(0, Math.max(1, errorLimit));
+
+            if (jsonObj.errors.length > truncatedObj.errors.length) {
+                truncatedObj.errors.push({
+                    file: '...',
+                    line: 0,
+                    message: `... and ${jsonObj.errors.length - truncatedObj.errors.length} more errors (truncated)`
+                });
+            }
+
+            return JSON.stringify(truncatedObj);
+        }
+
+        // For other JSON, fall back to string truncation
+        return this.formatResponse(jsonString);
+    }
+}
+
 class MCPServer {
     constructor() {
         this.unityServerUrl = 'http://localhost:17932';
+        this.configManager = new ConfigManager(this.unityServerUrl);
+        this.responseFormatter = null; // Will be initialized after first config load
         this.capabilities = {
             tools: {
                 compile_and_wait: {
@@ -168,6 +331,17 @@ class MCPServer {
         }
     }
 
+    async ensureResponseFormatter() {
+        if (!this.responseFormatter) {
+            const config = await this.configManager.getConfiguration();
+            this.responseFormatter = new ResponseFormatter(config);
+        } else {
+            // Update formatter with latest config if needed
+            const config = await this.configManager.getConfiguration();
+            this.responseFormatter.updateConfig(config);
+        }
+    }
+
     async handleToolCall(params, id) {
         const { name, arguments: args } = params;
 
@@ -223,6 +397,8 @@ class MCPServer {
 
     async callCompileAndWait(id, timeoutSeconds) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
 
             // Start compilation
             const compileResponse = await this.makeHttpRequest('/compile-and-wait');
@@ -245,13 +421,16 @@ class MCPServer {
                             ? `Compilation completed with errors:\n${statusResponse.errors.map(err => `${err.file}:${err.line} - ${err.message}`).join('\n')}`
                             : 'Compilation completed successfully with no errors.';
 
+                        // Apply response formatting
+                        const formattedText = this.responseFormatter.formatResponse(errorText);
+
                         return {
                             jsonrpc: '2.0',
                             id,
                             result: {
                                 content: [{
                                     type: 'text',
-                                    text: errorText
+                                    text: formattedText
                                 }]
                             }
                         };
@@ -276,6 +455,9 @@ class MCPServer {
 
     async callRunTests(id, testMode, testFilter, testFilterRegex, timeoutSeconds) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
             // Get initial status to capture current test run ID (if any)
             const initialStatus = await this.makeHttpRequest('/test-status');
             const initialTestRunId = initialStatus.testRunId;
@@ -324,13 +506,16 @@ class MCPServer {
                         // Test execution completed for our specific test run
                         const resultText = this.formatTestResults(statusResponse);
 
+                        // Apply response formatting
+                        const formattedText = this.responseFormatter.formatResponse(resultText);
+
                         return {
                             jsonrpc: '2.0',
                             id,
                             result: {
                                 content: [{
                                     type: 'text',
-                                    text: resultText
+                                    text: formattedText
                                 }]
                             }
                         };
@@ -355,8 +540,14 @@ class MCPServer {
 
     async callRefreshAssets(id, force = false) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
             // Call Unity refresh endpoint with force parameter
             const refreshResponse = await this.makeHttpRequest(`/refresh-assets?force=${force}`);
+
+            const responseText = refreshResponse.message || 'Asset database refresh completed.';
+            const formattedText = this.responseFormatter.formatResponse(responseText);
 
             return {
                 jsonrpc: '2.0',
@@ -364,7 +555,7 @@ class MCPServer {
                 result: {
                     content: [{
                         type: 'text',
-                        text: refreshResponse.message || 'Asset database refresh completed.'
+                        text: formattedText
                     }]
                 }
             };
@@ -376,8 +567,13 @@ class MCPServer {
 
     async callEditorStatus(id) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
             // Call Unity editor-status endpoint
             const statusResponse = await this.makeHttpRequest('/editor-status');
+
+            const formattedText = this.responseFormatter.formatJsonResponse(statusResponse);
 
             return {
                 jsonrpc: '2.0',
@@ -385,7 +581,7 @@ class MCPServer {
                 result: {
                     content: [{
                         type: 'text',
-                        text: JSON.stringify(statusResponse)
+                        text: formattedText
                     }]
                 }
             };
@@ -397,8 +593,13 @@ class MCPServer {
 
     async callCompileStatus(id) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
             // Call Unity compile-status endpoint
             const statusResponse = await this.makeHttpRequest('/compile-status');
+
+            const formattedText = this.responseFormatter.formatJsonResponse(statusResponse);
 
             return {
                 jsonrpc: '2.0',
@@ -406,7 +607,7 @@ class MCPServer {
                 result: {
                     content: [{
                         type: 'text',
-                        text: JSON.stringify(statusResponse)
+                        text: formattedText
                     }]
                 }
             };
@@ -418,8 +619,13 @@ class MCPServer {
 
     async callTestStatus(id) {
         try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
             // Call Unity test-status endpoint
             const statusResponse = await this.makeHttpRequest('/test-status');
+
+            const formattedText = this.responseFormatter.formatJsonResponse(statusResponse);
 
             return {
                 jsonrpc: '2.0',
@@ -427,7 +633,7 @@ class MCPServer {
                 result: {
                     content: [{
                         type: 'text',
-                        text: JSON.stringify(statusResponse)
+                        text: formattedText
                     }]
                 }
             };

@@ -56,6 +56,7 @@ namespace Yamu
             public const string TestStatus = "/test-status";
             public const string RefreshAssets = "/refresh-assets";
             public const string EditorStatus = "/editor-status";
+            public const string McpSettings = "/mcp-settings";
         }
 
         public static class JsonResponses
@@ -126,6 +127,14 @@ namespace Yamu
         public bool isPlaying;
     }
 
+    [System.Serializable]
+    public class McpSettingsResponse
+    {
+        public int responseCharacterLimit;
+        public bool enableTruncation;
+        public string truncationMessage;
+    }
+
     // ============================================================================
     // MAIN HTTP SERVER CLASS
     // ============================================================================
@@ -159,6 +168,11 @@ namespace Yamu
 
         // Test execution state tracking (prevent concurrent test runs)
         static readonly object _testLock = new object();
+
+        // Settings cache for thread-safe access from HTTP requests
+        static readonly object _settingsLock = new object();
+        static McpSettingsResponse _cachedSettings;
+        static DateTime _lastSettingsRefresh = DateTime.MinValue;
 
         // Shutdown coordination
         static volatile bool _shouldStop;
@@ -233,6 +247,13 @@ namespace Yamu
 
             // Update cached play mode state (thread-safe)
             _isPlaying = EditorApplication.isPlaying;
+
+            // Refresh cached settings periodically (every 2 seconds)
+            if ((DateTime.Now - _lastSettingsRefresh).TotalSeconds >= 2.0)
+            {
+                RefreshCachedSettings();
+                _lastSettingsRefresh = DateTime.Now;
+            }
         }
 
         static void OnCompilationStarted(object obj) => _isCompiling = true;
@@ -304,6 +325,7 @@ namespace Yamu
                 Constants.Endpoints.TestStatus => HandleTestStatusRequest(),
                 Constants.Endpoints.RefreshAssets => HandleRefreshAssetsRequest(request),
                 Constants.Endpoints.EditorStatus => HandleEditorStatusRequest(),
+                Constants.Endpoints.McpSettings => HandleMcpSettingsRequest(),
                 _ => HandleNotFoundRequest(response)
             };
         }
@@ -437,6 +459,75 @@ namespace Yamu
             return JsonUtility.ToJson(statusResponse);
         }
 
+        static string HandleMcpSettingsRequest()
+        {
+            lock (_settingsLock)
+            {
+                if (_cachedSettings == null)
+                {
+                    // First time access, queue main thread action to load settings
+                    McpSettingsResponse settingsResult = null;
+                    bool settingsLoaded = false;
+
+                    lock (_mainThreadActionQueue)
+                    {
+                        _mainThreadActionQueue.Enqueue(() =>
+                        {
+                            try
+                            {
+                                var settings = YamuSettings.Instance;
+                                settingsResult = new McpSettingsResponse
+                                {
+                                    responseCharacterLimit = settings.responseCharacterLimit,
+                                    enableTruncation = settings.enableTruncation,
+                                    truncationMessage = settings.truncationMessage
+                                };
+                            }
+                            catch (System.Exception ex)
+                            {
+                                Debug.LogError($"Failed to load Yamu settings: {ex.Message}");
+                                // Use default settings as fallback
+                                settingsResult = new McpSettingsResponse
+                                {
+                                    responseCharacterLimit = 25000,
+                                    enableTruncation = true,
+                                    truncationMessage = "\n\n... (response truncated due to length limit)"
+                                };
+                            }
+                            finally
+                            {
+                                settingsLoaded = true;
+                            }
+                        });
+                    }
+
+                    // Wait for settings to be loaded (with timeout)
+                    var timeout = DateTime.Now.AddSeconds(5);
+                    while (!settingsLoaded && DateTime.Now < timeout)
+                    {
+                        Thread.Sleep(50);
+                    }
+
+                    if (settingsLoaded && settingsResult != null)
+                    {
+                        _cachedSettings = settingsResult;
+                    }
+                    else
+                    {
+                        // Fallback to default settings if loading failed
+                        _cachedSettings = new McpSettingsResponse
+                        {
+                            responseCharacterLimit = 25000,
+                            enableTruncation = true,
+                            truncationMessage = "\n\n... (response truncated due to length limit)"
+                        };
+                    }
+                }
+
+                return JsonUtility.ToJson(_cachedSettings);
+            }
+        }
+
         static string HandleNotFoundRequest(HttpListenerResponse response)
         {
             response.StatusCode = (int)HttpStatusCode.NotFound;
@@ -449,6 +540,29 @@ namespace Yamu
             response.ContentLength64 = buffer.Length;
             response.OutputStream.Write(buffer, 0, buffer.Length);
             response.OutputStream.Close();
+        }
+
+        static void RefreshCachedSettings()
+        {
+            try
+            {
+                var settings = YamuSettings.Instance;
+                var newSettings = new McpSettingsResponse
+                {
+                    responseCharacterLimit = settings.responseCharacterLimit,
+                    enableTruncation = settings.enableTruncation,
+                    truncationMessage = settings.truncationMessage
+                };
+
+                lock (_settingsLock)
+                {
+                    _cachedSettings = newSettings;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Failed to refresh cached Yamu settings: {ex.Message}");
+            }
         }
 
         static void MonitorRefreshCompletion()

@@ -20,6 +20,21 @@ Unity projects.
 - `editor_status` - Gets current Unity Editor status including compilation state,
   test execution state, and play mode state for real-time monitoring
 
+## Configuration
+
+### Response Character Limits
+
+Yamu provides configurable character limits for MCP server responses to prevent overwhelming AI agents with overly long responses. This is particularly useful when dealing with large compilation errors or test outputs.
+
+**Configuration Location**: Unity Project Settings → "Yamu MCP Server"
+
+**Settings**:
+- **Response Character Limit**: Maximum characters in complete MCP response (default: 25000)
+- **Enable Truncation**: When enabled, responses exceeding the limit will be truncated
+- **Truncation Message**: Message appended to indicate content was cut off
+
+The system automatically calculates available space for content by subtracting MCP JSON overhead and truncation message length from the configured limit, ensuring maximum space is available for actual response content.
+
 ## Purpose
 
 This proof-of-concept demonstrates how AI coding agents (Claude Code, Gemini

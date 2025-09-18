@@ -19,6 +19,9 @@ Check out Design.md for the project design and goal definitions.
   subdirectories.
 - Read-only package source files are located in `Library/PackageCache/`. **Do not
   modify** files in this directory.
+- MCP integration tests are located in the `McpTests/` directory. These Python tests
+  verify MCP server functionality including compilation, test execution, and response
+  formatting. Run tests with `cd McpTests && python -m pytest`.
 
 # Code Style Guidelines
 
