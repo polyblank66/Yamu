@@ -542,6 +542,14 @@ namespace Yamu
 
                 if (string.IsNullOrEmpty(guidToCancel))
                 {
+                    // Check if tests are running without a stored GUID (edge case)
+                    lock (_testLock)
+                    {
+                        if (_isRunningTests)
+                        {
+                            return "{\"status\":\"warning\", \"message\":\"Test run is active but no GUID available for cancellation. Provide explicit guid parameter.\"}";
+                        }
+                    }
                     return "{\"status\":\"error\", \"message\":\"No test run to cancel. Either provide a guid parameter or start a test run first.\"}";
                 }
 
