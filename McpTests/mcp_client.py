@@ -198,6 +198,23 @@ class MCPClient:
             "arguments": {}
         })
 
+    async def cancel_tests(self, test_run_guid: str = "") -> Dict[str, Any]:
+        """Cancel running Unity test execution
+
+        Args:
+            test_run_guid: GUID of test run to cancel (optional).
+                          If not provided, cancels current running test.
+
+        Note:
+            Currently only supports EditMode tests as per Unity's TestRunnerApi limitations.
+        """
+        return await self._send_request("tools/call", {
+            "name": "tests_cancel",
+            "arguments": {
+                "test_run_guid": test_run_guid
+            }
+        })
+
     async def __aenter__(self):
         await self.start()
         return self
@@ -219,6 +236,9 @@ def run_sync_mcp_command(method: str, params: Dict[str, Any] = None) -> Dict[str
                 return await client.compile_and_wait(timeout=timeout)
             elif method == "run_tests":
                 return await client.run_tests(**(params or {}))
+            elif method == "cancel_tests":
+                test_run_guid = (params or {}).get("test_run_guid", "")
+                return await client.cancel_tests(test_run_guid=test_run_guid)
             else:
                 return await client._send_request(method, params)
 

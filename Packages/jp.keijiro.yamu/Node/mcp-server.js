@@ -268,6 +268,20 @@ class MCPServer {
                         properties: {},
                         required: []
                     }
+                },
+                tests_cancel: {
+                    description: "Cancel running Unity test execution. Uses Unity's TestRunnerApi.CancelTestRun(guid). Currently only supports EditMode tests. If no guid is provided, cancels the current test run. LLM HINTS: Only EditMode tests can be cancelled. PlayMode test cancellation is not supported by Unity's API.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            test_run_guid: {
+                                type: "string",
+                                description: "GUID of the test run to cancel (optional). If not provided, cancels the current running test. The GUID is typically returned when starting a test run.",
+                                default: ""
+                            }
+                        },
+                        required: []
+                    }
                 }
             }
         };
@@ -359,6 +373,8 @@ class MCPServer {
                     return await this.callCompileStatus(id);
                 case 'test_status':
                     return await this.callTestStatus(id);
+                case 'tests_cancel':
+                    return await this.callTestsCancel(id, args.test_run_guid || '');
                 default:
                     return {
                         jsonrpc: '2.0',
@@ -640,6 +656,38 @@ class MCPServer {
 
         } catch (error) {
             throw new Error(`Failed to get test status: ${error.message}`);
+        }
+    }
+
+    async callTestsCancel(id, testRunGuid = '') {
+        try {
+            // Ensure response formatter is ready
+            await this.ensureResponseFormatter();
+
+            // Build the URL with optional guid parameter
+            let url = '/cancel-tests';
+            if (testRunGuid) {
+                url += `?guid=${encodeURIComponent(testRunGuid)}`;
+            }
+
+            // Call Unity cancel-tests endpoint
+            const cancelResponse = await this.makeHttpRequest(url);
+
+            const formattedText = this.responseFormatter.formatJsonResponse(cancelResponse);
+
+            return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: formattedText
+                    }]
+                }
+            };
+
+        } catch (error) {
+            throw new Error(`Failed to cancel tests: ${error.message}`);
         }
     }
 

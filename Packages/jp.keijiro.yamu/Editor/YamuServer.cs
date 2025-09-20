@@ -57,6 +57,7 @@ namespace Yamu
             public const string RefreshAssets = "/refresh-assets";
             public const string EditorStatus = "/editor-status";
             public const string McpSettings = "/mcp-settings";
+            public const string CancelTests = "/cancel-tests";
         }
 
         public static class JsonResponses
@@ -326,6 +327,7 @@ namespace Yamu
                 Constants.Endpoints.RefreshAssets => HandleRefreshAssetsRequest(request),
                 Constants.Endpoints.EditorStatus => HandleEditorStatusRequest(),
                 Constants.Endpoints.McpSettings => HandleMcpSettingsRequest(),
+                Constants.Endpoints.CancelTests => HandleCancelTestsRequest(request),
                 _ => HandleNotFoundRequest(response)
             };
         }
@@ -525,6 +527,50 @@ namespace Yamu
                 }
 
                 return JsonUtility.ToJson(_cachedSettings);
+            }
+        }
+
+        static string HandleCancelTestsRequest(HttpListenerRequest request)
+        {
+            try
+            {
+                var query = request.Url.Query ?? "";
+                var testRunGuid = ExtractQueryParameter(query, "guid");
+
+                // Use provided guid or current test run ID
+                var guidToCancel = !string.IsNullOrEmpty(testRunGuid) ? testRunGuid : _currentTestRunId;
+
+                if (string.IsNullOrEmpty(guidToCancel))
+                {
+                    return "{\"status\":\"error\", \"message\":\"No test run to cancel. Either provide a guid parameter or start a test run first.\"}";
+                }
+
+                // Check if we have a test running first
+                lock (_testLock)
+                {
+                    if (!_isRunningTests && guidToCancel == _currentTestRunId)
+                    {
+                        return "{\"status\":\"warning\", \"message\":\"No test run currently active.\"}";
+                    }
+                }
+
+                // Try to cancel the test run using Unity's TestRunnerApi
+                bool cancelResult = TestRunnerApi.CancelTestRun(guidToCancel);
+
+                if (cancelResult)
+                {
+                    Debug.Log($"Test run cancellation requested for ID: {guidToCancel}");
+                    return $"{{\"status\":\"ok\", \"message\":\"Test run cancellation requested for ID: {guidToCancel}\", \"guid\":\"{guidToCancel}\"}}";
+                }
+                else
+                {
+                    return $"{{\"status\":\"error\", \"message\":\"Failed to cancel test run with ID: {guidToCancel}. Test run may not exist or may not be cancellable.\", \"guid\":\"{guidToCancel}\"}}";
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error cancelling tests: {ex.Message}");
+                return $"{{\"status\":\"error\", \"message\":\"Failed to cancel tests: {ex.Message}\"}}";
             }
         }
 
