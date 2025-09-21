@@ -118,6 +118,8 @@ namespace Yamu
         public string lastTestTime;
         public TestResults testResults;
         public string testRunId;
+        public bool hasError;
+        public string errorMessage;
     }
 
     [System.Serializable]
@@ -184,6 +186,9 @@ namespace Yamu
         internal static TestResults _testResults;
         internal static string _currentTestRunId = null;  // Unique ID to track test runs across domain reloads
         static TestCallbacks _testCallbacks;
+        // Test execution error state
+        internal static string _testExecutionError = null;
+        internal static bool _hasTestExecutionError = false;
 
         // Play mode state tracking (cached for thread-safe access)
         static bool _isPlaying = false;
@@ -445,7 +450,9 @@ namespace Yamu
                 isRunning = _isRunningTests,
                 lastTestTime = _lastTestTime.ToString("yyyy-MM-dd HH:mm:ss"),
                 testResults = _testResults,
-                testRunId = _currentTestRunId
+                testRunId = _currentTestRunId,
+                hasError = _hasTestExecutionError,
+                errorMessage = _testExecutionError
             };
             return JsonUtility.ToJson(statusResponse);
         }
@@ -788,6 +795,10 @@ namespace Yamu
             _currentTestRunId = Guid.NewGuid().ToString();
             _testResults = null;
 
+            // Reset error state for new test execution
+            _testExecutionError = null;
+            _hasTestExecutionError = false;
+
             Debug.Log($"Starting test execution with ID: {_currentTestRunId}");
 
             bool apiExecuteCalled = false;
@@ -867,7 +878,7 @@ namespace Yamu
     // ============================================================================
     // Handles Unity Test Runner callbacks and result collection
     
-    class TestCallbacks : ICallbacks
+    class TestCallbacks : ICallbacks, IErrorCallbacks
     {
         bool _shouldRestorePlayModeSettings;
         bool _originalEnterPlayModeOptionsEnabled;
@@ -882,6 +893,9 @@ namespace Yamu
 
         public void RunStarted(ITestAdaptor testsToRun)
         {
+            // Reset error state when new test run starts
+            Server._testExecutionError = null;
+            Server._hasTestExecutionError = false;
         }
 
         public void RunFinished(ITestResultAdaptor result)
@@ -922,6 +936,31 @@ namespace Yamu
 
         public void TestFinished(ITestResultAdaptor result)
         {
+        }
+
+        public void OnError(string errorDetails)
+        {
+            Debug.LogError($"Test execution error occurred: {errorDetails}");
+
+            // Store error information for status endpoint
+            Server._testExecutionError = errorDetails;
+            Server._hasTestExecutionError = true;
+
+            // Mark test execution as no longer running since it failed to start
+            Server._isRunningTests = false;
+        }
+
+        // Try alternative signature with Exception parameter
+        public void OnError(System.Exception exception)
+        {
+            Debug.LogError($"Test execution error occurred: {exception.Message}");
+
+            // Store error information for status endpoint
+            Server._testExecutionError = exception.Message;
+            Server._hasTestExecutionError = true;
+
+            // Mark test execution as no longer running since it failed to start
+            Server._isRunningTests = false;
         }
 
         void CollectTestResults(ITestResultAdaptor result, List<TestResult> results)

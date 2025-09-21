@@ -494,6 +494,11 @@ class MCPServer {
                 try {
                     const statusResponse = await this.makeHttpRequest('/test-status');
 
+                    // Check for early error detection
+                    if (statusResponse.hasError && statusResponse.errorMessage) {
+                        throw new Error(`Test execution failed to start: ${statusResponse.errorMessage}`);
+                    }
+
                     if (statusResponse.testRunId && statusResponse.testRunId !== initialTestRunId) {
                         currentTestRunId = statusResponse.testRunId;
                         testStarted = true;
@@ -516,6 +521,11 @@ class MCPServer {
             while (Date.now() - startTime < timeoutMs) {
                 try {
                     const statusResponse = await this.makeHttpRequest('/test-status');
+
+                    // Check for errors during test execution
+                    if (statusResponse.hasError && statusResponse.errorMessage) {
+                        throw new Error(`Test execution error: ${statusResponse.errorMessage}`);
+                    }
 
                     // Check if this is the same test run and it's completed
                     if (statusResponse.testRunId === currentTestRunId && statusResponse.status === 'idle') {
