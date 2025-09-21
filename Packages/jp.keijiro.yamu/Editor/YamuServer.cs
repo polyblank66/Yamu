@@ -794,15 +794,11 @@ namespace Yamu
 
         static void StartTestExecution(string mode, string filter, string filterRegex)
         {
-            // Generate unique test run ID
-            _currentTestRunId = Guid.NewGuid().ToString();
             _testResults = null;
 
             // Reset error state for new test execution
             _testExecutionError = null;
             _hasTestExecutionError = false;
-
-            Debug.Log($"Starting test execution with ID: {_currentTestRunId}");
 
             bool apiExecuteCalled = false;
             try
@@ -849,8 +845,10 @@ namespace Yamu
                 _testCallbacks.SetOriginalPlayModeSettings(testMode == TestMode.PlayMode, originalEnterPlayModeOptionsEnabled, originalEnterPlayModeOptions);
 
                 api.RegisterCallbacks(_testCallbacks);
-                api.Execute(new ExecutionSettings(filterObj));
+                _currentTestRunId = api.Execute(new ExecutionSettings(filterObj));
                 apiExecuteCalled = true; // If we reach here, api.Execute was called successfully
+
+                Debug.Log($"Started test execution with ID: {_currentTestRunId}");
             }
             catch (Exception ex)
             {
