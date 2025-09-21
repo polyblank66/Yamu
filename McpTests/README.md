@@ -92,6 +92,16 @@ pytest test_refresh_behavior.py
 # Status endpoint tests
 pytest test_compile_status.py
 pytest test_test_status.py
+pytest test_editor_status.py
+
+# Test execution and cancellation
+pytest test_run_tests_filters.py
+pytest test_tests_cancel.py
+
+# MCP response handling
+pytest test_response_truncation.py
+pytest test_mcp_warning_messages.py
+pytest test_compile_test_status_tools.py
 ```
 
 ### Run with Verbose Output
@@ -142,13 +152,20 @@ Tests are automatically classified into three performance tiers using pytest mar
 - Status monitoring
 - Timeout handling
 
-### 3. Test Execution (`test_run_tests.py`)
+### 3. Test Execution (`test_run_tests.py`, `test_run_tests_filters.py`)
 - EditMode test execution
 - PlayMode test execution
 - Test result formatting
-- Test filtering
+- Test filtering and regex patterns
 
-### 4. Compilation Error Scenarios
+### 4. Test Cancellation (`test_tests_cancel.py`)
+- EditMode test cancellation using TestRunnerApi.CancelTestRun
+- GUID-based test run cancellation
+- Current test run cancellation
+- Error handling for invalid GUIDs
+- Edge case testing (no running tests, concurrent access)
+
+### 5. Compilation Error Scenarios
 
 #### Standalone Scripts (`test_compilation_errors.py`, `test_new_files_with_errors.py`)
 - Syntax errors in existing files
@@ -164,11 +181,17 @@ Tests are automatically classified into three performance tiers using pytest mar
 - Assembly isolation testing
 - Dependency error handling
 
-### 5. Status Endpoints (`test_*_status.py`)
+### 6. Status Endpoints (`test_*_status.py`)
 - Direct HTTP endpoint testing
 - Response structure validation
-- Status tracking
+- Status tracking (compile_status, test_status, editor_status)
 - CORS header verification
+- Unity Editor state monitoring
+
+### 7. MCP Response Handling
+- Response truncation testing (`test_response_truncation.py`)
+- Warning message handling (`test_mcp_warning_messages.py`)
+- Status tools integration (`test_compile_test_status_tools.py`)
 
 ## Test Structure
 
@@ -317,7 +340,7 @@ response = await mcp_client.run_tests(
 )
 ```
 
-### 3. `refresh_assets` ⭐ NEW
+### 3. `refresh_assets`
 Forces Unity to refresh the asset database. **Required before compilation when files are added/removed/moved.**
 
 **Parameters:**
@@ -337,6 +360,67 @@ await mcp_client.refresh_assets(force=True)
 2. Call `refresh_assets` (with `force=true` if deleting files)
 3. Wait for MCP to be responsive
 4. Call `compile_and_wait`
+
+### 4. `tests_cancel`
+Cancels running Unity test execution using Unity's TestRunnerApi.CancelTestRun.
+
+**Parameters:**
+- `test_run_guid` (optional): GUID of the test run to cancel. If not provided, cancels the current running test
+
+**Usage:**
+```python
+# Cancel current running test
+response = await mcp_client.cancel_tests()
+
+# Cancel specific test run by GUID
+response = await mcp_client.cancel_tests(test_run_guid="12345678-abcd-1234-abcd-123456789abc")
+```
+
+**Important limitations:**
+- **EditMode tests only**: Currently only supports cancelling EditMode tests (Unity API limitation)
+- **PlayMode tests**: Cannot be cancelled due to Unity's TestRunnerApi constraints
+- **No active test**: Returns warning if no test is currently running
+
+**Response types:**
+- `"status": "ok"`: Cancellation requested successfully
+- `"status": "warning"`: No test running or no GUID available
+- `"status": "error"`: Failed to cancel or invalid GUID
+
+### 5. `editor_status`
+Get current Unity Editor status including compilation state, test execution state, and play mode state.
+
+**Parameters:** None
+
+**Usage:**
+```python
+response = await mcp_client.editor_status()
+```
+
+**Returns:** Real-time Unity Editor state information including whether the editor is compiling, running tests, or in play mode.
+
+### 6. `compile_status`
+Get current compilation status without triggering compilation.
+
+**Parameters:** None
+
+**Usage:**
+```python
+response = await mcp_client.compile_status()
+```
+
+**Returns:** Compilation state, last compile time, and any compilation errors.
+
+### 7. `test_status`
+Get current test execution status without running tests.
+
+**Parameters:** None
+
+**Usage:**
+```python
+response = await mcp_client.test_status()
+```
+
+**Returns:** Test execution state, last test time, test results, and test run ID.
 
 ## Understanding MCP Error -32603
 
