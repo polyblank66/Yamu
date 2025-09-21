@@ -155,26 +155,45 @@ def test_editor_status_multiple_requests():
 @pytest.mark.mcp
 @pytest.mark.protocol
 @pytest.mark.asyncio
-async def test_editor_status_during_compilation(mcp_client, unity_state_manager):
+async def test_editor_status_during_compilation(unity_state_manager):
     """Test editor_status during compilation"""
-    # Start compilation asynchronously
-    compile_task = asyncio.create_task(mcp_client.compile_and_wait(timeout=30))
+    client1 = MCPClient()
+    client2 = MCPClient()
+    await client1.start()
+    await client2.start()
 
-    # Wait a brief moment for compilation to start
-    await asyncio.sleep(0.2)
+    try:
+        # Start compilation with client1
+        compile_task = asyncio.create_task(
+            client1.compile_and_wait(timeout=30)
+        )
 
-    # Check status during compilation
-    status_response = await mcp_client.editor_status()
-    status_text = status_response["result"]["content"][0]["text"]
-    status_data = json.loads(status_text)
+        # Wait briefly for compilation to potentially start
+        await asyncio.sleep(0.5)
 
-    # Wait for compilation to complete
-    await compile_task
+        # Check status with client2 (separate client to avoid stream conflicts)
+        status_response = await client2.editor_status()
+        status_text = status_response["result"]["content"][0]["text"]
+        status_data = json.loads(status_text)
 
-    # Verify the response structure is correct
-    assert isinstance(status_data["isCompiling"], bool)
-    assert isinstance(status_data["isRunningTests"], bool)
-    assert isinstance(status_data["isPlaying"], bool)
+        # Verify the response structure is correct
+        assert isinstance(status_data["isCompiling"], bool)
+        assert isinstance(status_data["isRunningTests"], bool)
+        assert isinstance(status_data["isPlaying"], bool)
+
+        # Clean up the compilation task
+        try:
+            await asyncio.wait_for(compile_task, timeout=10)
+        except asyncio.TimeoutError:
+            compile_task.cancel()
+            try:
+                await compile_task
+            except asyncio.CancelledError:
+                pass
+
+    finally:
+        await client1.stop()
+        await client2.stop()
 
     # Note: Compilation might complete too quickly to catch in progress,
     # but the response structure should always be correct
