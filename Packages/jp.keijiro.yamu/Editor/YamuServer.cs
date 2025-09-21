@@ -497,7 +497,7 @@ namespace Yamu
                             }
                             catch (System.Exception ex)
                             {
-                                Debug.LogError($"Failed to load Yamu settings: {ex.Message}");
+                                Debug.LogError($"[YamuServer] Failed to load Yamu settings: {ex.Message}");
                                 // Use default settings as fallback
                                 settingsResult = new McpSettingsResponse
                                 {
@@ -577,7 +577,7 @@ namespace Yamu
 
                 if (cancelResult)
                 {
-                    Debug.Log($"Test run cancellation requested for ID: {guidToCancel}");
+                    Debug.Log($"[YamuServer] Test run cancellation requested for ID: {guidToCancel}");
                     return $"{{\"status\":\"ok\", \"message\":\"Test run cancellation requested for ID: {guidToCancel}\", \"guid\":\"{guidToCancel}\"}}";
                 }
                 else
@@ -587,7 +587,7 @@ namespace Yamu
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error cancelling tests: {ex.Message}");
+                Debug.LogError($"[YamuServer] Error cancelling tests: {ex.Message}");
                 return $"{{\"status\":\"error\", \"message\":\"Failed to cancel tests: {ex.Message}\"}}";
             }
         }
@@ -625,7 +625,7 @@ namespace Yamu
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"Failed to refresh cached Yamu settings: {ex.Message}");
+                Debug.LogError($"[YamuServer] Failed to refresh cached Yamu settings: {ex.Message}");
             }
         }
 
@@ -705,7 +705,7 @@ namespace Yamu
                             _isMonitoringRefresh = false;
                             _unityIsUpdating = false;
                         }
-                        Debug.LogError($"AssetDatabase.Refresh failed: {ex.Message}");
+                        Debug.LogError($"[YamuServer] AssetDatabase.Refresh failed: {ex.Message}");
                     }
                 });
             }
@@ -726,7 +726,7 @@ namespace Yamu
                 return;
 
             if (!_shouldStop)
-                Debug.LogError($"YamuServer error: {ex.Message}");
+                Debug.LogError($"[YamuServer] YamuServer error: {ex.Message}");
         }
 
         // ========================================================================
@@ -747,7 +747,7 @@ namespace Yamu
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"Failed to start test execution: {ex.Message}");
+                Debug.LogError($"[YamuServer] Failed to start test execution: {ex.Message}");
             }
             finally
             {
@@ -788,7 +788,7 @@ namespace Yamu
 
             if (waited >= maxWait)
             {
-                Debug.LogWarning("Timed out waiting for asset refresh to complete before running tests");
+                Debug.LogWarning("[YamuServer] Timed out waiting for asset refresh to complete before running tests");
             }
         }
 
@@ -817,7 +817,7 @@ namespace Yamu
                     EditorSettings.enterPlayModeOptionsEnabled = true;
                     EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
 
-                    Debug.Log("Overriding Enter Play Mode settings to disable domain reload for PlayMode tests");
+                    Debug.Log("[YamuServer] Overriding Enter Play Mode settings to disable domain reload for PlayMode tests");
                 }
 
                 var api = ScriptableObject.CreateInstance<TestRunnerApi>();
@@ -848,11 +848,11 @@ namespace Yamu
                 _currentTestRunId = api.Execute(new ExecutionSettings(filterObj));
                 apiExecuteCalled = true; // If we reach here, api.Execute was called successfully
 
-                Debug.Log($"Started test execution with ID: {_currentTestRunId}");
+                Debug.Log($"[YamuServer] Started test execution with ID: {_currentTestRunId}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to start test execution: {ex.Message}");
+                Debug.LogError($"[YamuServer] Failed to start test execution: {ex.Message}");
                 _testResults = new TestResults
                 {
                     totalTests = 0,
@@ -901,7 +901,7 @@ namespace Yamu
 
         public void RunFinished(ITestResultAdaptor result)
         {
-            Debug.Log($"Test run finished with status: {result.TestStatus}, ID: {Server._currentTestRunId}");
+            Debug.Log($"[YamuServer] Test run finished with status: {result.TestStatus}, ID: {Server._currentTestRunId}");
 
             var results = new List<TestResult>();
             CollectTestResults(result, results);
@@ -927,7 +927,7 @@ namespace Yamu
             {
                 EditorSettings.enterPlayModeOptionsEnabled = _originalEnterPlayModeOptionsEnabled;
                 EditorSettings.enterPlayModeOptions = _originalEnterPlayModeOptions;
-                Debug.Log("Restored original Enter Play Mode settings after PlayMode test completion");
+                Debug.Log("[YamuServer] Restored original Enter Play Mode settings after PlayMode test completion");
             }
         }
 
@@ -947,7 +947,7 @@ namespace Yamu
 
         public void OnError(string errorDetails)
         {
-            Debug.LogError($"Test execution error occurred: {errorDetails}");
+            Debug.LogError($"[YamuServer] Test execution error occurred: {errorDetails}");
 
             // Store error information for status endpoint
             Server._testExecutionError = errorDetails;
@@ -961,7 +961,7 @@ namespace Yamu
         // Unity documentation is unclear about exact OnError signature
         public void OnError(System.Exception exception)
         {
-            Debug.LogError($"Test execution error occurred: {exception.Message}");
+            Debug.LogError($"[YamuServer] Test execution error occurred: {exception.Message}");
 
             // Store error information for status endpoint
             Server._testExecutionError = exception.Message;
