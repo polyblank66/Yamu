@@ -187,6 +187,9 @@ namespace Yamu
         internal static string _currentTestRunId = null;  // Unique ID to track test runs across domain reloads
         static TestCallbacks _testCallbacks;
         // Test execution error state
+        // NOTE: Currently not populated due to Unity TestRunner API limitations
+        // IErrorCallbacks.OnError is not triggered for compilation errors as expected
+        // Infrastructure is ready for future Unity fixes or other error scenarios
         internal static string _testExecutionError = null;
         internal static bool _hasTestExecutionError = false;
 
@@ -938,6 +941,12 @@ namespace Yamu
         {
         }
 
+        // NOTE: IErrorCallbacks.OnError methods are implemented but appear to have issues in Unity
+        // Testing shows that compilation errors in test assemblies do NOT trigger these callbacks
+        // Unity seems to handle compilation errors by excluding broken test classes from execution
+        // rather than calling OnError. This may be a Unity TestRunner API bug or limitation.
+        // The infrastructure is in place for when/if Unity fixes this behavior.
+
         public void OnError(string errorDetails)
         {
             Debug.LogError($"Test execution error occurred: {errorDetails}");
@@ -951,6 +960,7 @@ namespace Yamu
         }
 
         // Try alternative signature with Exception parameter
+        // Unity documentation is unclear about exact OnError signature
         public void OnError(System.Exception exception)
         {
             Debug.LogError($"Test execution error occurred: {exception.Message}");
