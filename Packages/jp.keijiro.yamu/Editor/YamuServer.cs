@@ -725,6 +725,7 @@ namespace Yamu
         
         static void StartTestExecutionWithRefreshWait(string mode, string filter, string filterRegex)
         {
+            bool executionStarted = false;
             try
             {
                 // First, wait for asset refresh to complete if it's in progress
@@ -732,15 +733,22 @@ namespace Yamu
 
                 // Now start the actual test execution
                 StartTestExecution(mode, filter, filterRegex);
+                executionStarted = true; // If we reach here, execution started successfully
             }
             catch (System.Exception ex)
             {
-                // Reset test flag immediately if starting fails
-                lock (_testLock)
-                {
-                    _isRunningTests = false;
-                }
                 Debug.LogError($"Failed to start test execution: {ex.Message}");
+            }
+            finally
+            {
+                // Only clear the flag if execution failed to start
+                if (!executionStarted)
+                {
+                    lock (_testLock)
+                    {
+                        _isRunningTests = false;
+                    }
+                }
             }
         }
 
@@ -782,6 +790,7 @@ namespace Yamu
 
             Debug.Log($"Starting test execution with ID: {_currentTestRunId}");
 
+            bool apiExecuteCalled = false;
             try
             {
                 var testMode = mode == "PlayMode" ? TestMode.PlayMode : TestMode.EditMode;
@@ -827,11 +836,11 @@ namespace Yamu
 
                 api.RegisterCallbacks(_testCallbacks);
                 api.Execute(new ExecutionSettings(filterObj));
+                apiExecuteCalled = true; // If we reach here, api.Execute was called successfully
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Failed to start test execution: {ex.Message}");
-                _isRunningTests = false;
                 _testResults = new TestResults
                 {
                     totalTests = 0,
@@ -841,6 +850,14 @@ namespace Yamu
                     duration = 0,
                     results = new[] { new TestResult { name = "TestExecution", outcome = "Failed", message = ex.Message, duration = 0 } }
                 };
+            }
+            finally
+            {
+                // Only clear the flag if api.Execute failed to be called
+                if (!apiExecuteCalled)
+                {
+                    _isRunningTests = false;
+                }
             }
         }
     }
