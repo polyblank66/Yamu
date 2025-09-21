@@ -2,6 +2,34 @@
 
 const http = require('http');
 
+// Gracefully handle broken pipe when the host (e.g., Rider) closes the MCP stdio pipe.
+// Without this, Node will emit an unhandled 'error' on process.stdout and crash with EPIPE.
+(function setupStdoutSafety() {
+    try {
+        if (process && process.stdout && typeof process.stdout.on === 'function') {
+            process.stdout.on('error', (err) => {
+                const code = err && err.code;
+                if (code === 'EPIPE' || code === 'ECONNRESET' || code === 'ERR_STREAM_WRITE_AFTER_END') {
+                    // Host disconnected; exit quietly without writing to stderr
+                    try { process.exit(0); } catch (_) {}
+                }
+                // For other errors, do nothing special to avoid recursive writes.
+            });
+        }
+    } catch (_) { /* ignore */ }
+
+    // Provide a safe write that won't throw if stdout is gone.
+    global.safeStdoutWrite = function(data) {
+        try {
+            if (process && process.stdout && !process.stdout.writableEnded) {
+                process.stdout.write(data);
+            }
+        } catch (_) {
+            // Swallow to avoid crashes when the pipe is closed.
+        }
+    };
+})();
+
 // Custom error classes for Unity-specific issues
 class UnityUnavailableError extends Error {
     constructor(message, data) {
