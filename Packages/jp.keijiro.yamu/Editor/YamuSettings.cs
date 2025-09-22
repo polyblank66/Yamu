@@ -26,6 +26,10 @@ namespace Yamu
         [Tooltip("Enable debug logging for YamuServer HTTP handlers")]
         public bool enableDebugLogs = false;
 
+        [Header("Server Configuration")]
+        [Tooltip("TCP port for the Yamu MCP server (default: 17932)")]
+        public int serverPort = 17932;
+
         // Singleton pattern for easy access
         private static YamuSettings _instance;
 
@@ -94,6 +98,7 @@ namespace Yamu
             enableTruncation = true;
             truncationMessage = "\n\n... (response truncated due to length limit)";
             enableDebugLogs = false;
+            serverPort = 17932;
             Save();
         }
 
@@ -109,6 +114,10 @@ namespace Yamu
             // Ensure truncation message is not too long (reserve space for content)
             if (truncationMessage.Length > 500)
                 truncationMessage = truncationMessage.Substring(0, 500);
+
+            // Ensure valid port range
+            if (serverPort < 1024 || serverPort > 65535)
+                serverPort = 17932;
         }
     }
 }

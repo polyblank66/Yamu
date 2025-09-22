@@ -202,7 +202,8 @@ namespace Yamu
 
             _shouldStop = false;
             _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{Constants.ServerPort}/");
+            int port = YamuSettings.Instance.serverPort;
+            _listener.Prefixes.Add($"http://localhost:{port}/");
             _listener.Start();
 
             _thread = new(HttpRequestProcessor);

@@ -209,8 +209,8 @@ class ResponseFormatter {
 }
 
 class MCPServer {
-    constructor() {
-        this.unityServerUrl = 'http://localhost:17932';
+    constructor(port = 17932) {
+        this.unityServerUrl = `http://localhost:${port}`;
         this.configManager = new ConfigManager(this.unityServerUrl);
         this.responseFormatter = null; // Will be initialized after first config load
         this.capabilities = {
@@ -869,5 +869,23 @@ class MCPServer {
     }
 }
 
-const server = new MCPServer();
+// Parse command-line arguments for --port
+let port = 17932;
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === "--port") {
+    i++; // Skip to the next argument
+    if (i < process.argv.length) {
+      const parsedPort = parseInt(process.argv[i], 10);
+      if (!isNaN(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535) {
+        port = parsedPort;
+      } else {
+        console.error(`Invalid port value: ${process.argv[i]}. Using default 17932.`);
+      }
+    } else {
+      console.error("--port requires a value. Using default 17932.");
+    }
+  }
+}
+
+const server = new MCPServer(port);
 server.start();

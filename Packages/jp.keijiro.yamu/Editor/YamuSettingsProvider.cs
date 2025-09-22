@@ -34,7 +34,7 @@ namespace Yamu
 
                 // Keywords for search functionality in Project Settings
                 provider.keywords = new[] {
-                    "Yamu", "MCP", "Response", "Limit", "Character", "Truncation", "Message", "Server", "Debug", "Logs"
+                    "Yamu", "MCP", "Response", "Limit", "Character", "Truncation", "Message", "Server", "Port", "Debug", "Logs"
                 };
 
                 return provider;
@@ -102,6 +102,16 @@ namespace Yamu
             EditorGUILayout.PropertyField(enableDebugLogsProp, new GUIContent(
                 "Enable Debug Logs",
                 "Enable debug logging for YamuServer HTTP handlers"));
+
+            EditorGUILayout.Space();
+
+            // Server Configuration section
+            EditorGUILayout.LabelField("Server Configuration", EditorStyles.boldLabel);
+
+            var serverPortProp = _settings.FindProperty("serverPort");
+            EditorGUILayout.PropertyField(serverPortProp, new GUIContent(
+                "Server Port",
+                "TCP port for the Yamu MCP server (default: 17932)"));
 
             EditorGUILayout.Space();
 
