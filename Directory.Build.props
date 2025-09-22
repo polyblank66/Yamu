@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Disable auto-generated global usings -->
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
