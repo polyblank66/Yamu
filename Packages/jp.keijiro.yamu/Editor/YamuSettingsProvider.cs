@@ -34,7 +34,7 @@ namespace Yamu
 
                 // Keywords for search functionality in Project Settings
                 provider.keywords = new[] {
-                    "Yamu", "MCP", "Response", "Limit", "Character", "Truncation", "Message", "Server"
+                    "Yamu", "MCP", "Response", "Limit", "Character", "Truncation", "Message", "Server", "Debug", "Logs"
                 };
 
                 return provider;
@@ -92,6 +92,16 @@ namespace Yamu
             EditorGUILayout.PropertyField(truncationMessageProp, new GUIContent(
                 "Truncation Message",
                 "Message appended to truncated responses to indicate content was cut off."));
+
+            EditorGUILayout.Space();
+
+            // Debug Configuration section
+            EditorGUILayout.LabelField("Debug Configuration", EditorStyles.boldLabel);
+
+            var enableDebugLogsProp = _settings.FindProperty("enableDebugLogs");
+            EditorGUILayout.PropertyField(enableDebugLogsProp, new GUIContent(
+                "Enable Debug Logs",
+                "Enable debug logging for YamuServer HTTP handlers"));
 
             EditorGUILayout.Space();
 

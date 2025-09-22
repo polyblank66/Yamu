@@ -22,6 +22,10 @@ namespace Yamu
         [TextArea(2, 3)]
         public string truncationMessage = "\n\n... (response truncated due to length limit)";
 
+        [Header("Debug Configuration")]
+        [Tooltip("Enable debug logging for YamuServer HTTP handlers")]
+        public bool enableDebugLogs = false;
+
         // Singleton pattern for easy access
         private static YamuSettings _instance;
 
@@ -89,6 +93,7 @@ namespace Yamu
             responseCharacterLimit = 25000;
             enableTruncation = true;
             truncationMessage = "\n\n... (response truncated due to length limit)";
+            enableDebugLogs = false;
             Save();
         }
 

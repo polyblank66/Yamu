@@ -39,7 +39,7 @@ namespace Yamu
     // ============================================================================
     // CONFIGURATION AND CONSTANTS
     // ============================================================================
-    
+
     // Configuration constants for the Yamu MCP server
     static class Constants
     {
@@ -72,7 +72,7 @@ namespace Yamu
     // DATA TRANSFER OBJECTS (DTOs)
     // ============================================================================
     // These classes define the JSON structure for API requests and responses
-    
+
     [System.Serializable]
     public class CompileError
     {
@@ -142,24 +142,24 @@ namespace Yamu
     // MAIN HTTP SERVER CLASS
     // ============================================================================
     // Handles HTTP server lifecycle, request routing, and Unity integration
-    
+
     [InitializeOnLoad]
     public static class Server
     {
         // ========================================================================
         // STATE VARIABLES
         // ========================================================================
-        
+
         // HTTP server components
         static HttpListener _listener;
         static Thread _thread;
-        
+
         // Compilation tracking
         static List<CompileError> _compilationErrors = new();
         static bool _isCompiling;
         static DateTime _lastCompileTime = DateTime.MinValue;  // When last compilation finished
         static DateTime _compileRequestTime = DateTime.MinValue;  // When compilation was requested
-        
+
         // Unity main thread action queue (required for Unity API calls)
         static Queue<Action> _mainThreadActionQueue = new();
 
@@ -248,7 +248,7 @@ namespace Yamu
         // ========================================================================
         // UNITY EVENT HANDLERS
         // ========================================================================
-        
+
         static void OnEditorUpdate()
         {
             while (_mainThreadActionQueue.Count > 0)
@@ -287,7 +287,7 @@ namespace Yamu
         // ========================================================================
         // HTTP SERVER INFRASTRUCTURE
         // ========================================================================
-        
+
         static void HttpRequestProcessor()
         {
             while (!_shouldStop && _listener?.IsListening == true)
@@ -342,6 +342,10 @@ namespace Yamu
 
         static string HandleCompileAndWaitRequest()
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleCompileAndWaitRequest");
+            }
             _compileRequestTime = DateTime.Now;
             lock (_mainThreadActionQueue)
             {
@@ -394,6 +398,10 @@ namespace Yamu
 
         static string HandleCompileStatusRequest()
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleCompileStatusRequest");
+            }
             var status = _isCompiling || EditorApplication.isCompiling ? "compiling" : "idle";
             var statusResponse = new CompileStatusResponse
             {
@@ -407,6 +415,10 @@ namespace Yamu
 
         static string HandleRunTestsRequest(HttpListenerRequest request)
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleRunTestsRequest");
+            }
             var query = request.Url.Query ?? "";
             var mode = ExtractQueryParameter(query, "mode") ?? "EditMode";
             var filter = ExtractQueryParameter(query, "filter");
@@ -446,6 +458,10 @@ namespace Yamu
 
         static string HandleTestStatusRequest()
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleTestStatusRequest");
+            }
             var status = _isRunningTests ? "running" : "idle";
             var statusResponse = new TestStatusResponse
             {
@@ -462,6 +478,10 @@ namespace Yamu
 
         static string HandleEditorStatusRequest()
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleEditorStatusRequest");
+            }
             var statusResponse = new EditorStatusResponse
             {
                 isCompiling = _isCompiling || EditorApplication.isCompiling,
@@ -473,6 +493,10 @@ namespace Yamu
 
         static string HandleMcpSettingsRequest()
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleMcpSettingsRequest");
+            }
             lock (_settingsLock)
             {
                 if (_cachedSettings == null)
@@ -542,6 +566,10 @@ namespace Yamu
 
         static string HandleCancelTestsRequest(HttpListenerRequest request)
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleCancelTestsRequest");
+            }
             try
             {
                 var query = request.Url.Query ?? "";
@@ -654,6 +682,10 @@ namespace Yamu
 
         static string HandleRefreshAssetsRequest(HttpListenerRequest request)
         {
+            if (YamuSettings.Instance.enableDebugLogs)
+            {
+                Debug.Log($"[YamuServer][Debug] Entering HandleRefreshAssetsRequest");
+            }
             // Parse force parameter from query string
             bool force = request.Url.Query.Contains("force=true");
 
@@ -673,7 +705,8 @@ namespace Yamu
             // Queue the refresh operation on main thread
             lock (_mainThreadActionQueue)
             {
-                _mainThreadActionQueue.Enqueue(() => {
+                _mainThreadActionQueue.Enqueue(() =>
+                {
                     try
                     {
                         if (force)
@@ -732,7 +765,7 @@ namespace Yamu
         // ========================================================================
         // TEST EXECUTION COORDINATION
         // ========================================================================
-        
+
         static void StartTestExecutionWithRefreshWait(string mode, string filter, string filterRegex)
         {
             bool executionStarted = false;
@@ -878,7 +911,7 @@ namespace Yamu
     // TEST EXECUTION MANAGEMENT
     // ============================================================================
     // Handles Unity Test Runner callbacks and result collection
-    
+
     class TestCallbacks : ICallbacks, IErrorCallbacks
     {
         bool _shouldRestorePlayModeSettings;
