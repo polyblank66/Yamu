@@ -957,20 +957,6 @@ namespace Yamu
             Server._isRunningTests = false;
         }
 
-        // Try alternative signature with Exception parameter
-        // Unity documentation is unclear about exact OnError signature
-        public void OnError(System.Exception exception)
-        {
-            Debug.LogError($"[YamuServer] Test execution error occurred: {exception.Message}");
-
-            // Store error information for status endpoint
-            Server._testExecutionError = exception.Message;
-            Server._hasTestExecutionError = true;
-
-            // Mark test execution as no longer running since it failed to start
-            Server._isRunningTests = false;
-        }
-
         void CollectTestResults(ITestResultAdaptor result, List<TestResult> results)
         {
             // Recursively collect test results from Unity's test hierarchy
