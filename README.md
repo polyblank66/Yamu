@@ -1,3 +1,7 @@
+# Development Status
+
+All further development is done in the [Nyamu](https://github.com/polyblank66/Nyamu) hard fork.
+
 # Yamu
 
 **Yamu** (Yet Another Minimal MCP server for Unity) is an experimental MCP
